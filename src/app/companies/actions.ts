@@ -5,7 +5,8 @@ import { refresh } from "next/cache";
 import { getDb, schema } from "@/db/client";
 import { seedStarterList } from "@/lib/companies";
 import { parseBoardUrl } from "@/lib/feeds/boards";
-import { runFeeds, testBoard } from "@/lib/feeds/ingest";
+import { testBoard } from "@/lib/feeds/ingest";
+import { checkAndScore } from "@/lib/feeds/run";
 import { ATS_LABEL, ATS_LIST, type Ats } from "@/lib/feeds/types";
 import { requireSession } from "@/lib/requireSession";
 
@@ -62,7 +63,7 @@ export async function checkCompany(id: number): Promise<{ added: number; error?:
   await requireSession();
   const db = await getDb();
   await db.update(companies).set({ active: true }).where(eq(companies.id, Number(id)));
-  const s = await runFeeds(db, { trigger: "manual", companyIds: [Number(id)] });
+  const s = await checkAndScore(db, { trigger: "manual", companyIds: [Number(id)] });
   refresh();
   return { added: s.added, error: s.errors[0]?.error };
 }

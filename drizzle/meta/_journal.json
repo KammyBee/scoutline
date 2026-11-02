@@ -15,6 +15,13 @@
       "when": 1793583483466,
       "tag": "0001_job_feeds",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793586953405,
+      "tag": "0002_claude_calls",
+      "breakpoints": true
     }
   ]
 }

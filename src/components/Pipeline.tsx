@@ -12,7 +12,7 @@ type Sort = "fit" | "found" | "pay";
 type Mode = "remote" | "hybrid" | "onsite";
 
 export function Pipeline({ data }: { data: PipelineData }) {
-  const { jobs, today, answers } = data;
+  const { jobs, today, answers, aiReady } = data;
   const [view, setView] = useState<ViewId>("review");
   const [stage, setStage] = useState<Status | null>(null);
   const [q, setQ] = useState("");
@@ -143,7 +143,7 @@ export function Pipeline({ data }: { data: PipelineData }) {
         <Aside jobs={jobs} today={today} onOpen={goTo} />
       </div>
 
-      {openId ? <JobPanel key={openId} id={openId} answers={answers} today={today} onClose={close} toast={toast.show} /> : null}
+      {openId ? <JobPanel key={openId} id={openId} answers={answers} today={today} aiReady={aiReady} onClose={close} toast={toast.show} /> : null}
       <Toast state={toast.state} />
     </>
   );

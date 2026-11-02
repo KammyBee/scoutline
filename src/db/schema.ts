@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  real,
   serial,
   text,
   timestamp,
@@ -200,3 +201,22 @@ export const settings = pgTable("settings", {
   value: jsonb("value").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Every Claude API call: what it was for, tokens used and estimated cost. Powers the daily cap and the cost line on Stats. */
+export const aiCalls = pgTable(
+  "ai_calls",
+  {
+    id: serial("id").primaryKey(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    day: date("day", { mode: "string" }).notNull(),
+    purpose: text("purpose").notNull(), // score | cover_letter | answer
+    model: text("model").notNull(),
+    postingId: text("posting_id"),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    costUsd: real("cost_usd").notNull().default(0),
+    ok: boolean("ok").notNull().default(true),
+    error: text("error"),
+  },
+  (t) => [index("ai_calls_day_idx").on(t.day)],
+);

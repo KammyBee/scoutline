@@ -5,7 +5,10 @@ import { refresh } from "next/cache";
 import { getDb, schema } from "@/db/client";
 import { STATUSES, type Status } from "@/db/schema";
 import { addDays, todayIn } from "@/lib/dates";
-import { runFeeds } from "@/lib/feeds/ingest";
+import { AiUnavailable, aiConfigured } from "@/lib/ai/claude";
+import { answerQuestion, scoreWithClaude, writeCoverLetter } from "@/lib/ai/features";
+import { checkAndScore } from "@/lib/feeds/run";
+import { rescoreAll } from "@/lib/rescore";
 import { getJobDetail } from "@/lib/queries";
 import { requireSession } from "@/lib/requireSession";
 import type { JobDetail } from "@/lib/types";
@@ -43,6 +46,8 @@ export async function setStatus(id: string, status: Status, passReason?: string)
   if (status === "passed") {
     const [p] = await db.select({ title: postings.title, company: postings.company }).from(postings).where(eq(postings.id, id));
     await db.insert(feedback).values({ postingId: id, kind: "pass", reason: patch.passReason, title: p?.title, company: p?.company });
+    // "Not for me" style passes lower the score of similar titles still in your list.
+    if (["Not for me", "Not interested", "Wrong stack"].includes(patch.passReason ?? "")) await rescoreAll(db);
   }
   refresh();
   return getJobDetail(id);
@@ -95,12 +100,56 @@ export async function archiveJob(id: string): Promise<void> {
   refresh();
 }
 
-export type CheckResult = { companiesChecked: number; jobsMatched: number; added: number; failed: number; switchedOff: string[] };
+export type CheckResult = { companiesChecked: number; jobsMatched: number; added: number; failed: number; switchedOff: string[]; claudeScored: number; claudeNote: string | null };
 
 /** "Check for new jobs": reads every watched job board now instead of waiting for the nightly run. */
 export async function checkForJobs(): Promise<CheckResult> {
   await requireSession();
-  const s = await runFeeds(await getDb(), { trigger: "manual" });
+  const s = await checkAndScore(await getDb(), { trigger: "manual" });
   refresh();
-  return { companiesChecked: s.companiesChecked, jobsMatched: s.jobsMatched, added: s.added, failed: s.failed, switchedOff: s.switchedOff };
+  return { companiesChecked: s.companiesChecked, jobsMatched: s.jobsMatched, added: s.added, failed: s.failed, switchedOff: s.switchedOff, claudeScored: s.claudeScored, claudeNote: s.claudeNote };
+}
+
+/** "More like this": remembers which of your skills this job uses and ranks similar jobs higher. */
+export async function likeJob(id: string): Promise<JobDetail | null> {
+  await requireSession();
+  const db = await getDb();
+  const [p] = await db.select({ title: postings.title, company: postings.company, hits: matches.hits }).from(postings).leftJoin(matches, eq(matches.postingId, postings.id)).where(eq(postings.id, id));
+  if (!p) throw new Error("No such job");
+  await db.insert(feedback).values({ postingId: id, kind: "like", title: p.title, company: p.company, terms: p.hits ?? [] });
+  await rescoreAll(db);
+  refresh();
+  return getJobDetail(id);
+}
+
+export type AiResult<T> = { ok: true; value: T } | { ok: false; error: string };
+async function ai<T>(fn: () => Promise<T>): Promise<AiResult<T>> {
+  await requireSession();
+  if (!aiConfigured()) return { ok: false, error: "Add your ANTHROPIC_API_KEY to .env.local (or Vercel) to use Claude features." };
+  try {
+    return { ok: true, value: await fn() };
+  } catch (e) {
+    if (e instanceof AiUnavailable) return { ok: false, error: e.message };
+    console.error("Claude call failed", e);
+    return { ok: false, error: "Claude didn't answer. Try again in a moment." };
+  }
+}
+
+export async function scoreJob(id: string): Promise<AiResult<JobDetail | null>> {
+  return ai(async () => {
+    const db = await getDb();
+    await scoreWithClaude(db, [id]);
+    refresh();
+    return getJobDetail(id);
+  });
+}
+
+export async function draftCoverLetter(id: string): Promise<AiResult<string>> {
+  return ai(async () => writeCoverLetter(await getDb(), id));
+}
+
+export async function draftAnswer(id: string, question: string): Promise<AiResult<string>> {
+  const q = String(question ?? "").trim();
+  if (!q) return { ok: false, error: "Paste the question first." };
+  return ai(async () => answerQuestion(await getDb(), id, q));
 }

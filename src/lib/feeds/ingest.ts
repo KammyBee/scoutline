@@ -3,6 +3,8 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@/db/schema";
 import { dedupeKey, slugify } from "../dedupe";
 import { todayIn } from "../dates";
+import { computeMatch, whyFromMatch, type Prefs } from "../match";
+import { loadPrefs } from "../rescore";
 import { fetchBoard, fetchGreenhouseDescription } from "./boards";
 import { TIER_FIT, judge } from "./rules";
 import { ATS_LABEL, type Ats, type FeedJob, type Fetcher } from "./types";
@@ -58,6 +60,7 @@ export async function runFeeds(db: Db, opts: RunOptions): Promise<RunSummary> {
   const ids = new Set(existing.map((e) => e.id));
   const [{ maxNum }] = await db.select({ maxNum: sql<number>`coalesce(max(${postings.num}), 0)` }).from(postings);
   let nextNum = Number(maxNum) + 1;
+  const prefs: Prefs = await loadPrefs(db);
 
   const summary: RunSummary = { runId: 0, companiesChecked: 0, jobsSeen: 0, jobsMatched: 0, added: 0, failed: 0, switchedOff: [], errors: [], newJobs: [] };
 
@@ -98,7 +101,7 @@ export async function runFeeds(db: Db, opts: RunOptions): Promise<RunSummary> {
     }
 
     const rows: (typeof postings.$inferInsert)[] = [];
-    const fits: { id: string; fit: number; why: string }[] = [];
+    const fits: { id: string; fit: number; why: string; hits: string[]; gaps: string[] }[] = [];
     for (const { j, v } of fresh) {
       const description = j.description ?? (ats === "greenhouse" ? await fetchGreenhouseDescription(fetcher, board, j.externalId) : null);
       let id = slugify(`${c.name}-${j.title}`, 50) + "-" + slugify(j.externalId, 8);
@@ -126,7 +129,9 @@ export async function runFeeds(db: Db, opts: RunOptions): Promise<RunSummary> {
         dedupeKey: dedupeKey(c.name, j.title),
         atsRef: `${ats}:${board}:${j.externalId}`,
       });
-      fits.push({ id, fit: TIER_FIT[v.tier], why: `${v.reason}, found on ${c.name}'s job board.` });
+      const m = computeMatch(j.title, description, prefs);
+      // The title tier keeps a strong ERP title from sinking just because the posting text is short.
+      fits.push({ id, fit: Math.max(m.fit, TIER_FIT[v.tier] - 1), why: whyFromMatch(m), hits: m.hits, gaps: m.gaps });
     }
 
     let added: string[] = [];
@@ -136,7 +141,7 @@ export async function runFeeds(db: Db, opts: RunOptions): Promise<RunSummary> {
         added = inserted.map((r) => r.id);
         if (!added.length) return;
         await tx.insert(applications).values(added.map((postingId) => ({ postingId, status: "new" as const }))).onConflictDoNothing();
-        await tx.insert(matches).values(fits.filter((f) => added.includes(f.id)).map((f) => ({ postingId: f.id, fit: f.fit, why: f.why, scoredBy: "rules" }))).onConflictDoNothing();
+        await tx.insert(matches).values(fits.filter((f) => added.includes(f.id)).map((f) => ({ postingId: f.id, fit: f.fit, why: f.why, hits: f.hits, gaps: f.gaps, scoredBy: "rules" }))).onConflictDoNothing();
       });
     }
     summary.added += added.length;

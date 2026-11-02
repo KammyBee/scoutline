@@ -34,6 +34,9 @@ export type JobEvent = { id: number; date: string; kind: string; summary: string
 
 export type JobDetail = JobRow & {
   why: string | null;
+  hits: string[];
+  gaps: string[];
+  scoredBy: string | null;
   verified: string | null;
   description: string | null;
   descriptionSavedAt: string | null;
@@ -51,6 +54,7 @@ export type JobDetail = JobRow & {
 
 export type PipelineData = {
   jobs: JobRow[];
+  aiReady: boolean;
   answers: Record<string, string>;
   today: string;
 };

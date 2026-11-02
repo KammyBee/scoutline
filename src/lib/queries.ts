@@ -1,6 +1,7 @@
 import "server-only";
 import { and, desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db/client";
+import { aiConfigured } from "./ai/claude";
 import { todayIn } from "./dates";
 import type { JobDetail, JobRow, PipelineData } from "./types";
 
@@ -55,7 +56,7 @@ export async function getPipeline(): Promise<PipelineData> {
     fit: fit ?? 3,
     lastEvent: last.get(r.id) ?? null,
   }));
-  return { jobs, answers: (ans[0]?.value as Record<string, string>) ?? {}, today: todayIn() };
+  return { jobs, answers: (ans[0]?.value as Record<string, string>) ?? {}, today: todayIn(), aiReady: aiConfigured() };
 }
 
 export async function getJobDetail(id: string): Promise<JobDetail | null> {
@@ -64,6 +65,9 @@ export async function getJobDetail(id: string): Promise<JobDetail | null> {
     .select({
       ...rowColumns,
       why: matches.why,
+      hits: matches.hits,
+      gaps: matches.gaps,
+      scoredBy: matches.scoredBy,
       verified: postings.verified,
       description: postings.description,
       descriptionSavedAt: postings.descriptionSavedAt,
@@ -86,9 +90,11 @@ export async function getJobDetail(id: string): Promise<JobDetail | null> {
     .from(events)
     .where(eq(events.postingId, id))
     .orderBy(desc(events.date), desc(events.id));
-  const { prep, fit, ...rest } = row;
+  const { prep, fit, hits, gaps, ...rest } = row;
   return {
     ...rest,
+    hits: hits ?? [],
+    gaps: gaps ?? [],
     prep: prep ?? null,
     hasPrep: !!prep?.text,
     fit: fit ?? 3,

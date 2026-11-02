@@ -1,5 +1,6 @@
 import "server-only";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { rescoreAll } from "@/lib/rescore";
 import { migrateDb, openDb } from "./open";
 import * as schema from "./schema";
 
@@ -11,7 +12,11 @@ async function init(): Promise<Db> {
   const db = await openDb();
   // The local PGlite database brings itself up to date on first use, so a new version of the app
   // never runs against old tables. Postgres/Neon is migrated explicitly with `npm run db:migrate`.
-  if (!process.env.DATABASE_URL) await migrateDb(db);
+  if (!process.env.DATABASE_URL) {
+    await migrateDb(db);
+    // Fills in skill-match chips for jobs added before they existed. Only changed rows are written.
+    await rescoreAll(db).catch((e) => console.error("Skill-match refresh failed", e));
+  }
   return db;
 }
 

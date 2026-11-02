@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { archiveJob, loadJob, markActionDone, saveDate, saveText, setFit, setStatus } from "@/app/actions";
+import { archiveJob, draftAnswer, draftCoverLetter, likeJob, loadJob, markActionDone, saveDate, saveText, scoreJob, setFit, setStatus } from "@/app/actions";
 import { addDays, fmtDate } from "@/lib/dates";
 import { KINDS, PASS_REASONS, answersText, cap, kindLabel, openAction, payText, safeUrl, statusLabel } from "@/lib/jobView";
 import type { JobDetail, Status } from "@/lib/types";
@@ -29,8 +29,8 @@ function when(iso: string) {
   return isNaN(+d) ? iso : d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-export function JobPanel(props: { id: string; answers: Record<string, string>; today: string; onClose: () => void; toast: (m: string) => void }) {
-  const { id, answers, today, onClose, toast } = props;
+export function JobPanel(props: { id: string; answers: Record<string, string>; today: string; aiReady: boolean; onClose: () => void; toast: (m: string) => void }) {
+  const { id, answers, today, aiReady, onClose, toast } = props;
   const [j, setJ] = useState<JobDetail | null>(null);
   const [failed, setFailed] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
@@ -123,8 +123,8 @@ export function JobPanel(props: { id: string; answers: Record<string, string>; t
               ))}
             </div>
             <div className="dr-body" role="tabpanel">
-              {tab === "overview" ? <Overview j={j} pending={pending} run={run} reload={reload} onArchived={onClose} openPrep={() => setTab("prep")} /> : null}
-              {tab === "apply" ? <Apply j={j} answers={answers} copy={copy} run={run} /> : null}
+              {tab === "overview" ? <Overview j={j} pending={pending} run={run} reload={reload} onArchived={onClose} openPrep={() => setTab("prep")} aiReady={aiReady} setJ={setJ} toast={toast} /> : null}
+              {tab === "apply" ? <Apply j={j} answers={answers} copy={copy} run={run} aiReady={aiReady} /> : null}
               {tab === "prep" ? <PrepTab j={j} copy={copy} /> : null}
               {tab === "posting" ? <Posting j={j} copy={copy} /> : null}
             </div>
@@ -137,7 +137,7 @@ export function JobPanel(props: { id: string; answers: Record<string, string>; t
 
 type Run = (fn: () => Promise<unknown>, ok?: string) => void;
 
-function Overview({ j, pending, run, reload, onArchived, openPrep }: { j: JobDetail; pending: boolean; run: Run; reload: () => void; onArchived: () => void; openPrep: () => void }) {
+function Overview({ j, pending, run, reload, onArchived, openPrep, aiReady, setJ, toast }: { j: JobDetail; pending: boolean; run: Run; reload: () => void; onArchived: () => void; openPrep: () => void; aiReady: boolean; setJ: (d: JobDetail) => void; toast: (m: string) => void }) {
   const act = openAction(j);
   const [notes, setNotes] = useState(j.notes ?? "");
   const [confirm, setConfirm] = useState(false);
@@ -152,6 +152,7 @@ function Overview({ j, pending, run, reload, onArchived, openPrep }: { j: JobDet
   return (
     <>
       {j.why ? <p className="why">{j.why}</p> : null}
+      <MatchBox j={j} pending={pending} run={run} aiReady={aiReady} setJ={setJ} toast={toast} />
       {bits.length ? <p className="meta-row">{bits.join(" · ")}</p> : null}
       {act ? (
         <div className="action-box">
@@ -214,8 +215,20 @@ function Overview({ j, pending, run, reload, onArchived, openPrep }: { j: JobDet
   );
 }
 
-function Apply({ j, answers, copy, run }: { j: JobDetail; answers: Record<string, string>; copy: (t: string | null | undefined, ok: string) => void; run: Run }) {
+function Apply({ j, answers, copy, run, aiReady }: { j: JobDetail; answers: Record<string, string>; copy: (t: string | null | undefined, ok: string) => void; run: Run; aiReady: boolean }) {
   const [letter, setLetter] = useState(j.coverLetter ?? "");
+  const [writing, setWriting] = useState(false);
+  const [sure, setSure] = useState(false);
+  const [err, setErr] = useState("");
+  const write = async () => {
+    if (letter.trim() && !sure) { setSure(true); return; }
+    setSure(false); setErr(""); setWriting(true);
+    try {
+      const r = await draftCoverLetter(j.id);
+      if (r.ok) setLetter(r.value); else setErr(r.error);
+    } catch { setErr("Claude didn't answer. Try again in a moment."); }
+    setWriting(false);
+  };
   return (
     <>
       <div className="kit">
@@ -230,8 +243,13 @@ function Apply({ j, answers, copy, run }: { j: JobDetail; answers: Record<string
         <label htmlFor={"cl-" + j.id}>Cover letter</label>
         <textarea className="cl" id={"cl-" + j.id} value={letter} placeholder="No cover letter yet for this job." onChange={(e) => setLetter(e.target.value)}
           onBlur={() => { if (letter !== (j.coverLetter ?? "")) run(() => saveText(j.id, "coverLetter", letter), "Cover letter saved"); }} />
-        <div className="detail-actions"><button type="button" className="btn primary" onClick={() => copy(letter, "Cover letter copied")}>Copy cover letter</button></div>
+        <div className="detail-actions">
+          <button type="button" className="btn primary" onClick={() => copy(letter, "Cover letter copied")}>Copy cover letter</button>
+          {aiReady ? <button type="button" className="btn" disabled={writing} onClick={write}>{writing ? "Writing…" : sure ? "Replace your letter? Click again" : letter.trim() ? "Rewrite with Claude" : "Write with Claude"}</button> : null}
+        </div>
+        {err ? <p className="ai-err" role="alert">{err}</p> : null}
       </div>
+      {aiReady ? <AskBox id={j.id} copy={copy} /> : <p className="meta-row">Add an Anthropic API key to have Claude write cover letters and answer screening questions here.</p>}
     </>
   );
 }
@@ -269,5 +287,64 @@ function Posting({ j, copy }: { j: JobDetail; copy: (t: string | null | undefine
         <p className="meta-row">{safeUrl(j.url) ? "No saved copy yet. Use Open posting." : "No posting link for this job yet."}</p>
       )}
     </>
+  );
+}
+
+const SCORED_BY: Record<string, string> = { claude: "Scored by Claude", you: "Your score", rules: "Scored by skill match", import: "Score from the old dashboard" };
+
+function MatchBox({ j, pending, run, aiReady, setJ, toast }: { j: JobDetail; pending: boolean; run: Run; aiReady: boolean; setJ: (d: JobDetail) => void; toast: (m: string) => void }) {
+  const [scoring, setScoring] = useState(false);
+  const score = async () => {
+    setScoring(true);
+    try {
+      const r = await scoreJob(j.id);
+      if (r.ok) { if (r.value) setJ(r.value); toast("Claude scored this job"); } else toast(r.error);
+    } catch { toast("Claude didn't answer. Try again in a moment."); }
+    setScoring(false);
+  };
+  const open = j.status === "new" || j.status === "saved";
+  return (
+    <div className="match-box">
+      <span className="lab">Your match{j.scoredBy ? " · " + (SCORED_BY[j.scoredBy] ?? j.scoredBy) : ""}</span>
+      {j.hits.length || j.gaps.length ? (
+        <div className="match">
+          {j.hits.map((h) => <span key={"h" + h} className="m-hit">{h}</span>)}
+          {j.gaps.map((g) => <span key={"g" + g} className="m-gap">{g}</span>)}
+        </div>
+      ) : <span className="meta-row">No skills from your resume spotted in this posting yet.</span>}
+      {open ? (
+        <div className="row-btns">
+          <button type="button" className="btn" disabled={pending} onClick={() => run(async () => { const d = await likeJob(j.id); if (d) setJ(d); }, "Got it. Similar jobs will rank higher.")}>More like this</button>
+          {aiReady && j.scoredBy !== "you" ? <button type="button" className="btn" disabled={scoring} onClick={score}>{scoring ? "Scoring…" : j.scoredBy === "claude" ? "Score again with Claude" : "Score with Claude"}</button> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AskBox({ id, copy }: { id: string; copy: (t: string | null | undefined, ok: string) => void }) {
+  const [q, setQ] = useState("");
+  const [a, setA] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const ask = async () => {
+    setErr(""); setBusy(true);
+    try {
+      const r = await draftAnswer(id, q);
+      if (r.ok) setA(r.value); else setErr(r.error);
+    } catch { setErr("Claude didn't answer. Try again in a moment."); }
+    setBusy(false);
+  };
+  return (
+    <div className="ai-box">
+      <h3>Screening question</h3>
+      <textarea rows={3} aria-label="Screening question" placeholder="Paste a question from the application, like &quot;Describe a time you…&quot;" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="row-btns">
+        <button type="button" className="btn" disabled={busy || !q.trim()} onClick={ask}>{busy ? "Writing…" : "Draft an answer with Claude"}</button>
+        {a ? <button type="button" className="btn" onClick={() => copy(a, "Answer copied")}>Copy answer</button> : null}
+      </div>
+      {err ? <p className="ai-err" role="alert">{err}</p> : null}
+      {a ? <p className="ai-out">{a}</p> : null}
+    </div>
   );
 }

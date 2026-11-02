@@ -21,7 +21,7 @@ export const VIEWS: { id: ViewId; label: string; statuses: Status[] | null; remo
   { id: "all", label: "All", statuses: null },
 ];
 
-export const PASS_REASONS = ["Too senior", "Commute or onsite", "Pay too low", "Wrong stack", "Contract only", "Not interested", "Other"];
+export const PASS_REASONS = ["Not for me", "Too senior", "Commute or onsite", "Pay too low", "Wrong stack", "Contract only", "Other"];
 
 export const KINDS: Record<string, string> = {
   applied: "Application received",
