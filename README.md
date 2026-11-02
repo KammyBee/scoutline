@@ -32,6 +32,8 @@ npm run dev                    # http://localhost:3000
 
 With `DATABASE_URL` unset, the database lives in `.data/pglite` and is created on first use. Delete that folder to start over.
 
+The local database can be open in only one program at a time. Stop `npm run dev` (Ctrl+C) before running `npm run import`, `npm run db:migrate` or `npm run fetch-jobs`, then start it again. The app applies any pending database updates by itself when it starts locally.
+
 To make a `SESSION_SECRET`:
 
 ```bash
