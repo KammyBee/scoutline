@@ -10,5 +10,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!login|_next/static|_next/image|favicon.ico|robots.txt).*)"],
+  // /api/cron checks its own CRON_SECRET instead of a session.
+  matcher: ["/((?!login|api/cron|_next/static|_next/image|favicon.ico|robots.txt).*)"],
 };

@@ -345,3 +345,36 @@ body.drawer-open { overflow: hidden; }
 .head-actions { display: flex; align-items: center; gap: 14px; }
 .linkish { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--muted); cursor: pointer; text-decoration: underline; }
 .skeleton { height: 420px; }
+
+/* Header nav and job check */
+.nav { display: flex; gap: 14px; margin-top: 6px; font-size: 14px; }
+.nav a { color: var(--muted); text-decoration: none; padding-bottom: 2px; border-bottom: 2px solid transparent; }
+.nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.check-jobs { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.head-actions { flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 700px) { .head-actions, .check-jobs { justify-content: flex-start; } }
+
+/* Watch list */
+.companies .res-head { flex-wrap: wrap; }
+.ctable { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ctable th { text-align: left; font-weight: 500; color: var(--faint); font-family: var(--font-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; padding: 10px 16px 6px; }
+.ctable td { padding: 10px 16px; border-top: 1px solid var(--line); vertical-align: top; }
+.ctable td .sub { display: block; color: var(--muted); font-size: 12.5px; }
+.ctable td a { color: var(--accent); text-decoration: none; }
+.ctable .ok { color: var(--ok); }
+.ctable .bad { color: var(--bad); }
+.ctable tr.off td { opacity: .6; }
+.ctable .r { text-align: right; }
+.ctable .row-btns { display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.ctable .row-btns .btn { padding: 4px 9px; font-size: 12.5px; }
+.add-form details { font-size: 13px; color: var(--muted); }
+.add-form details summary { cursor: pointer; margin-bottom: 6px; }
+.okmsg { color: var(--ok); font-size: 13.5px; margin: 0; }
+@media (max-width: 700px) {
+  .ctable thead { display: none; }
+  .ctable, .ctable tbody, .ctable tr, .ctable td { display: block; width: 100%; }
+  .ctable tr { border-top: 1px solid var(--line); padding: 8px 0; }
+  .ctable td { border-top: 0; padding: 4px 12px; }
+  .ctable .r { text-align: left; }
+  .ctable .row-btns { justify-content: flex-start; }
+}

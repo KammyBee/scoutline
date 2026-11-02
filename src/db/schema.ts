@@ -26,7 +26,31 @@ export const companies = pgTable("companies", {
   ats: text("ats"), // greenhouse | lever | ashby | null
   board: text("board"), // the board token / site name on that ATS
   active: boolean("active").notNull().default(true),
+  /** why it's on the list, e.g. "R&D hardware" */
+  category: text("category"),
+  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true, mode: "string" }),
+  /** ok | not_found | error */
+  lastStatus: text("last_status"),
+  lastError: text("last_error"),
+  /** open jobs on the board at the last check */
+  lastJobCount: integer("last_job_count"),
+  /** how many of those matched your filters */
+  lastMatchCount: integer("last_match_count"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** One check of all watched job boards. */
+export const feedRuns = pgTable("feed_runs", {
+  id: serial("id").primaryKey(),
+  trigger: text("trigger").notNull(), // cron | manual | script
+  startedAt: timestamp("started_at", { withTimezone: true, mode: "string" }).notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true, mode: "string" }),
+  companiesChecked: integer("companies_checked").notNull().default(0),
+  jobsSeen: integer("jobs_seen").notNull().default(0),
+  jobsMatched: integer("jobs_matched").notNull().default(0),
+  added: integer("added").notNull().default(0),
+  failed: integer("failed").notNull().default(0),
+  errors: jsonb("errors").$type<{ company: string; error: string }[]>().notNull().default([]),
 });
 
 /** Every job posting the app has ever seen, from any source. */
@@ -56,6 +80,8 @@ export const postings = pgTable(
     dedupeKey: text("dedupe_key").notNull(),
     /** true for roles you saw before and removed: kept only so they never come back */
     archived: boolean("archived").notNull().default(false),
+    /** "greenhouse:anthropic:12345" for jobs pulled from a company board */
+    atsRef: text("ats_ref"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -63,6 +89,7 @@ export const postings = pgTable(
     uniqueIndex("postings_dedupe_key_idx").on(t.dedupeKey),
     uniqueIndex("postings_url_idx").on(t.url).where(sql`${t.url} is not null and ${t.url} <> ''`),
     index("postings_found_idx").on(t.found),
+    uniqueIndex("postings_ats_ref_idx").on(t.atsRef).where(sql`${t.atsRef} is not null`),
   ],
 );
 

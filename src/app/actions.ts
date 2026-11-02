@@ -5,6 +5,7 @@ import { refresh } from "next/cache";
 import { getDb, schema } from "@/db/client";
 import { STATUSES, type Status } from "@/db/schema";
 import { addDays, todayIn } from "@/lib/dates";
+import { runFeeds } from "@/lib/feeds/ingest";
 import { getJobDetail } from "@/lib/queries";
 import { requireSession } from "@/lib/requireSession";
 import type { JobDetail } from "@/lib/types";
@@ -92,4 +93,14 @@ export async function archiveJob(id: string): Promise<void> {
   const db = await getDb();
   await db.update(postings).set({ archived: true, updatedAt: new Date() }).where(eq(postings.id, id));
   refresh();
+}
+
+export type CheckResult = { companiesChecked: number; jobsMatched: number; added: number; failed: number; switchedOff: string[] };
+
+/** "Check for new jobs": reads every watched job board now instead of waiting for the nightly run. */
+export async function checkForJobs(): Promise<CheckResult> {
+  await requireSession();
+  const s = await runFeeds(await getDb(), { trigger: "manual" });
+  refresh();
+  return { companiesChecked: s.companiesChecked, jobsMatched: s.jobsMatched, added: s.added, failed: s.failed, switchedOff: s.switchedOff };
 }
