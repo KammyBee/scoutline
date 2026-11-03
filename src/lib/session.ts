@@ -1,4 +1,4 @@
-// Single-user sign-in: a password from APP_PASSWORD and a signed, expiring cookie.
+// Single-user sign-in: Google (one allowed account) or a password from APP_PASSWORD, then a signed, expiring cookie.
 // Uses Web Crypto so it runs both in the proxy and in server actions.
 
 export const SESSION_COOKIE = "sl_session";
@@ -12,8 +12,15 @@ function secret(): string {
   return s;
 }
 
+/** Google sign-in is set up (same check as googleConfigured(), kept here so the proxy stays small). */
+export function googleSignInConfigured(): boolean {
+  return !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET && !!process.env.GOOGLE_ALLOWED_EMAIL?.trim();
+}
+
+/** Sign-in works when there's a session secret and at least one way in: a password or Google. */
 export function authConfigured(): boolean {
-  return !!process.env.APP_PASSWORD && !!process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 32;
+  const secretOk = !!process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 32;
+  return secretOk && (!!process.env.APP_PASSWORD || googleSignInConfigured());
 }
 
 async function hmacHex(key: string, msg: string): Promise<string> {

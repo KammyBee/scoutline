@@ -1,6 +1,6 @@
 # Scoutline
 
-A personal job search pipeline. Scoutline keeps every posting you've seen, every application and its email history in one Postgres database, and shows them as a compact list with a detail panel for each job.
+A personal job search pipeline. Scoutline keeps every posting you've seen, every application and its email history in one Postgres database, and shows them as a compact list with a detail panel for each job. It reads your job email from Gmail (read-only) to keep each application's status up to date, and tells you when to follow up.
 
 It started as a Claude-run dashboard and is being rebuilt as a regular web app, in five phases:
 
@@ -9,8 +9,8 @@ It started as a Claude-run dashboard and is being rebuilt as a regular web app, 
 | 1. Foundation | App, database, sign-in, import from the old dashboard, pipeline list and job panel | **Done** |
 | 2. Job feeds | Daily checks of company job boards on Greenhouse, Lever and Ashby, with filters and dedupe | **Done** |
 | 3. Matching | Skill scoring, feedback buttons, Claude scoring, cover letters and screening answers, stats | **Done** |
-| 4. Gmail tracking | Google sign-in, Gmail sync, follow-up and no-response rules | Next |
-| 5. Portfolio polish | Demo mode, architecture diagram, public deploy | |
+| 4. Gmail tracking | Google sign-in, Gmail sync, follow-up and no-response rules | **Done** |
+| 5. Portfolio polish | Demo mode, architecture diagram, public deploy | Next |
 
 ## Stack
 
@@ -87,11 +87,53 @@ The **Stats** page shows how many applications got a reply or an interview, brok
 
 Not covered: employers whose careers sites run on Workday, iCIMS or their own systems (many large hardware companies), and broad keyword search across Indeed, LinkedIn or Dice, none of which offer a free public API.
 
+## Gmail tracking
+
+Connect Gmail and Scoutline reads your job email, files each message under the job it's about, and keeps statuses current:
+
+| Email | What happens |
+| --- | --- |
+| "Thanks for applying" | Logged; a New or Saved job moves to **Applied**, with a follow-up date a week out |
+| Interview request | **Interviewing**, plus "Action needed: reply with your availability" |
+| Assessment, form, background check | **Action needed**, with a due date when the email gives one ("within 3 days") |
+| Rejection | **Rejected** |
+| Offer | **Offer**, plus "Review the offer" |
+| Recruiter or other update | Logged in the job's email history |
+
+Statuses only move forward, and a job you passed on is never changed. Replies in a thread stay with the job the thread started on. Messages Scoutline can't place (say, a recruiter writing about a role you don't track) land on the **Inbox** page, where you pick the job or hide them. Job alerts and newsletters are skipped.
+
+**What it reads and keeps.** Gmail access is read-only (`gmail.readonly`). Scoutline searches only received mail with hiring-system senders or job words in it, skipping Promotions and Social. For each job email it keeps the sender, the subject, the kind, dates, a link to open it in Gmail, and a one-line summary written from a template. It never stores message bodies or attachments (attachments aren't even downloaded), and it strips phone numbers and money amounts from anything it saves, so offer numbers never reach the database. Senders in `GMAIL_SKIP_DOMAINS` are ignored completely; put your current employer's domain there. The code can't send, reply, label, archive or delete: every Gmail call goes through one allow-list (`src/lib/gmail/api.ts`) that permits listing messages, reading a message, and saving a draft, and the tests check it.
+
+**Follow-up rules** (Inbox page, and on every sync):
+
+- A follow-up comes due `FOLLOW_UP_DAYS` (7) after you apply. **Write follow-up** opens a short editable note; **I followed up** logs it and sets the next date; **Snooze a week** just moves the date.
+- No reply for `NO_RESPONSE_DAYS` (30) after applying, or after your last follow-up: the job is marked **No response**. Set it to 0 to turn this off.
+- Interviewing and no email either way for `QUIET_INTERVIEW_DAYS` (14): it shows up as worth a check-in.
+
+**Follow-up drafts (optional).** Press **Allow follow-up drafts** to grant `gmail.compose`, and **Save as Gmail draft** puts the note in your Gmail Drafts folder. It is never sent; you open it in Gmail and send it yourself.
+
+**Syncing.** Press **Sync now** on the Inbox page. Online, Vercel also runs it daily at 15:42 UTC (about 7:42 AM Pacific) and applies the follow-up rules, even if Gmail isn't connected. The first sync reads the last `GMAIL_FIRST_SYNC_DAYS` (45) days.
+
+### Set up Google (one time, about 10 minutes)
+
+1. In [Google Cloud Console](https://console.cloud.google.com), create a project (e.g. "Scoutline").
+2. **APIs & Services → Library**: enable the **Gmail API**.
+3. **APIs & Services → OAuth consent screen**: choose **External**, fill in the app name and your email, and add yourself under **Test users**. Add the scopes `openid`, `email`, `.../auth/gmail.readonly` and `.../auth/gmail.compose`.
+4. **APIs & Services → Credentials → Create credentials → OAuth client ID**, type **Web application**. Under **Authorized redirect URIs** add `http://localhost:3000/auth/google/callback`, and later your Vercel address plus `/auth/google/callback`.
+5. Put the client ID and secret in `.env.local` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, set `GOOGLE_ALLOWED_EMAIL` to your Gmail address, and set `GMAIL_SKIP_DOMAINS`.
+6. Restart `npm run dev`, choose **Sign in with Google**, then open **Inbox** and press **Sync now**.
+
+While the consent screen is in **Testing**, Google expires the connection after 7 days and the Inbox page asks you to reconnect. To avoid that, set the publishing status to **In production**. Google then shows an "unverified app" warning on the consent screen, which is expected for a personal app that only you use.
+
+The Google refresh token is stored encrypted with a key derived from `SESSION_SECRET`; if you change that secret, connect Gmail again. **Disconnect** on the Inbox page deletes the token and asks Google to revoke it.
+
+Once Google sign-in works you can remove `APP_PASSWORD`; only `GOOGLE_ALLOWED_EMAIL` can sign in. Leaving it set keeps the password as a backup.
+
 ## Put it online (Neon + Vercel)
 
 1. **Database.** Create a free project at [neon.tech](https://neon.tech). Copy the **pooled** connection string.
 2. **Load your data into it.** Put that string in `.env.local` as `DATABASE_URL`, then run `npm run import -- data/dashboard-export.json`. This creates the tables and imports your jobs.
-3. **Deploy.** Import the GitHub repo at [vercel.com/new](https://vercel.com/new). Under Environment Variables add `DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `APP_TIMEZONE`, `CRON_SECRET` (any long random string) and, for Claude features, `ANTHROPIC_API_KEY`, then deploy. `vercel.json` schedules the daily job-board check at 13:17 UTC (about 5–6 AM Pacific); Vercel sends `CRON_SECRET` with it, and the endpoint refuses calls without it.
+3. **Deploy.** Import the GitHub repo at [vercel.com/new](https://vercel.com/new). Under Environment Variables add `DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `APP_TIMEZONE`, `CRON_SECRET` (any long random string) and, for Claude features, `ANTHROPIC_API_KEY`, then deploy. For Gmail tracking also add `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAIL`, `GMAIL_SKIP_DOMAINS` and `APP_URL` (your site's address), and add the site's `/auth/google/callback` address to the OAuth client's redirect URIs. `vercel.json` schedules the daily job-board check at 13:17 UTC (about 5–6 AM Pacific) and the Gmail sync at 15:42 UTC; Vercel sends `CRON_SECRET` with both, and the endpoints refuse calls without it.
 4. Open the site and sign in with your password.
 
 Schema changes later: `npm run db:generate` writes a new migration from `src/db/schema.ts`, and `npm run db:migrate` applies it to whichever database `DATABASE_URL` points at.
@@ -113,12 +155,14 @@ Schema changes later: `npm run db:generate` writes a new migration from `src/db/
 
 ```
 src/
-  app/            pages (pipeline, watch list, stats, sign-in), server actions, and the daily cron route
+  app/            pages (pipeline, inbox, watch list, stats, sign-in), server actions, Google sign-in routes, and the cron routes
   components/     Pipeline (list, tabs, filters, sidebar) and JobPanel (the detail drawer)
   db/             Drizzle schema, connection (Neon or PGlite) and migrations runner
   lib/ai/         Claude client with cost log and daily cap; scoring, cover letters, screening answers
   lib/feeds/      job board readers (Greenhouse, Lever, Ashby), filters, the ingest run, starter watch list
-  lib/            skill match, rescoring, your profile facts, stats, queries, import mapping, dedupe keys, dates, session signing
+  lib/google/     Google OAuth (PKCE), the encrypted token store
+  lib/gmail/      allow-listed Gmail client, message parsing and redaction, classifier, job matching, sync, drafts
+  lib/            follow-up rules, inbox queries, skill match, rescoring, your profile facts, stats, queries, import mapping, dedupe keys, dates, session signing
   proxy.ts        sends anyone without a valid session to /login
 drizzle/          generated SQL migrations
 scripts/          migrate and import commands
@@ -133,11 +177,12 @@ tests/            Vitest tests with a made-up fixture (no real data)
 | `applications` | Your status, dates, notes, cover letter, resume pick, action items and interview prep for a posting |
 | `matches` | Fit score (1 to 5), the reason, matched skills and gaps |
 | `events` | Each application's history: confirmations, interviews, rejections |
-| `emails` | Job email summaries from Gmail (never full bodies) |
+| `emails` | Job email summaries from Gmail (never full bodies), and whether each was filed, needs a job, or was hidden |
 | `feedback` | Pass reasons and "More like this" picks |
 | `ai_calls` | One row per Claude call: purpose, model, tokens, estimated cost, errors |
 | `companies` | Your watch list: each employer's job board, and how the last check went |
 | `feed_runs` | One row per job-board check: boards checked, jobs seen, matched and added, errors |
+| `google_account` | Your Google connection: email, granted scopes, the encrypted refresh token, and how the last sync went |
 | `resumes`, `settings` | Resume links and screening answers |
 
 ## Privacy
@@ -148,5 +193,7 @@ Your exported data and the local database are git-ignored (`data/`, `.data/`, `.
 
 - **Drizzle instead of Prisma.** Drizzle runs on PGlite, so local development and the tests need no Postgres install, and it produces plain SQL migrations.
 - **No Adzuna.** Its free tier is meant for evaluation, so phase 2 uses only the free company job boards. Broad keyword search stays in the Claude dashboard for now.
-- **Password sign-in until phase 4.** Google sign-in arrives with Gmail access in phase 4. Until then, one password from `APP_PASSWORD` and a signed 30-day cookie protect the app.
+- **Google sign-in, password as a backup.** Sign-in is limited to one Google account (`GOOGLE_ALLOWED_EMAIL`). The phase 1 password still works if `APP_PASSWORD` is set. Either way you get the same signed 30-day cookie.
+- **OAuth by hand, not a library.** The Google flow is about 150 lines (`src/lib/google/`, `src/app/auth/google/`) with PKCE and a state check, which keeps it easy to read and adds no dependencies.
+- **Rules, not Claude, for email.** Classifying job email with patterns is free, instant, and keeps email text away from any other service. Summaries come from templates, so nothing from a message body is ever saved.
 - **Claude scoring is optional.** The free skill match always runs; Claude scores on top only when a key is set.

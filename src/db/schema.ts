@@ -174,7 +174,7 @@ export const emails = pgTable(
     state: text("state").notNull().default("matched"),
     processedAt: timestamp("processed_at", { withTimezone: true, mode: "string" }),
   },
-  (t) => [index("emails_posting_idx").on(t.postingId)],
+  (t) => [index("emails_posting_idx").on(t.postingId), index("emails_thread_idx").on(t.threadId)],
 );
 
 /** Every signal you give about what you want: pass reasons, "More like this", "Not for me". */
@@ -220,3 +220,22 @@ export const aiCalls = pgTable(
   },
   (t) => [index("ai_calls_day_idx").on(t.day)],
 );
+
+/**
+ * Your Google connection (one row, id 1). The refresh token is encrypted with a key derived from
+ * SESSION_SECRET. Scopes are only ever gmail.readonly, plus gmail.compose if you turn on drafts.
+ */
+export const googleAccount = pgTable("google_account", {
+  id: integer("id").primaryKey().default(1),
+  email: text("email").notNull(),
+  refreshTokenEnc: text("refresh_token_enc"),
+  scopes: text("scopes").notNull().default(""),
+  connectedAt: timestamp("connected_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+  /** newest message date already read; the next sync starts a day before it */
+  syncedThrough: timestamp("synced_through", { withTimezone: true, mode: "string" }),
+  lastSyncAt: timestamp("last_sync_at", { withTimezone: true, mode: "string" }),
+  /** ok | error | reconnect */
+  lastSyncStatus: text("last_sync_status"),
+  lastSyncError: text("last_sync_error"),
+  lastSyncSummary: jsonb("last_sync_summary").$type<{ read: number; saved: number; matched: number; unmatched: number; statusChanges: number } | null>(),
+});

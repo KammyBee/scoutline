@@ -10,6 +10,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // /api/cron checks its own CRON_SECRET instead of a session.
-  matcher: ["/((?!login|api/cron|_next/static|_next/image|favicon.ico|robots.txt).*)"],
+  // /api/cron checks its own CRON_SECRET instead of a session. /auth/google is the Google sign-in flow,
+  // which checks the session itself where it needs one.
+  matcher: ["/((?!login|auth/google|api/cron|_next/static|_next/image|favicon.ico|robots.txt).*)"],
 };
