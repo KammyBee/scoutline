@@ -31,6 +31,8 @@ export const KINDS: Record<string, string> = {
   recruiter: "Recruiter",
   offer: "Offer",
   update: "Update",
+  followup: "Followed up",
+  noresponse: "No response",
 };
 
 export const ANSWER_FIELDS: [string, string][] = [

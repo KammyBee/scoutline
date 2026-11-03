@@ -15,7 +15,7 @@ async function FeedStatus() {
   return <CheckJobsButton last={last} watching={active.length} />;
 }
 
-export function Header({ current }: { current: "pipeline" | "companies" | "stats" }) {
+export function Header({ current }: { current: "pipeline" | "inbox" | "companies" | "stats" }) {
   return (
     <header className="head">
       <div>
@@ -23,6 +23,7 @@ export function Header({ current }: { current: "pipeline" | "companies" | "stats
         <h1>Scoutline</h1>
         <nav className="nav" aria-label="Sections">
           <Link href="/" aria-current={current === "pipeline" ? "page" : undefined}>Pipeline</Link>
+          <Link href="/inbox" aria-current={current === "inbox" ? "page" : undefined}>Inbox</Link>
           <Link href="/companies" aria-current={current === "companies" ? "page" : undefined}>Watch list</Link>
           <Link href="/stats" aria-current={current === "stats" ? "page" : undefined}>Stats</Link>
         </nav>
