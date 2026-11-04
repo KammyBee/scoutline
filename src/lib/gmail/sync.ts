@@ -4,7 +4,7 @@ import * as schema from "@/db/schema";
 import { applyFollowUpRules } from "../followups";
 import { accessToken, canRead, getAccount } from "../google/account";
 import { GoogleAuthError, type Fetcher } from "../google/oauth";
-import { GmailApi } from "./api";
+import { GmailApi, GmailRateLimited } from "./api";
 import { classify, gmailQuery, looksJobRelated, senderDomain, type MailKind } from "./classify";
 import { linkMessage, type Candidate } from "./link";
 import { clip, redact, toMailIn, type MailIn } from "./parse";
@@ -13,7 +13,7 @@ import { applyToJob, jobsForThreads, summarize } from "./apply";
 type Db = NodePgDatabase<typeof schema>;
 const { emails, postings, applications, googleAccount } = schema;
 
-export type SyncSummary = { read: number; saved: number; matched: number; unmatched: number; statusChanges: number; markedNoResponse: number; more: boolean };
+export type SyncSummary = { read: number; saved: number; matched: number; unmatched: number; statusChanges: number; markedNoResponse: number; more: boolean; rateLimited: boolean };
 
 const FIRST_SYNC_DAYS = () => Math.max(1, Number(process.env.GMAIL_FIRST_SYNC_DAYS) || 45);
 const MAX_LIST = 500;
@@ -44,13 +44,13 @@ async function pool<T>(items: T[], n: number, fn: (item: T, i: number) => Promis
  * Saves only: sender, a cleaned-up subject, a one-line summary from a template, the kind, dates and a Gmail link.
  * Never saves message bodies, attachments, phone numbers or money amounts.
  */
-export async function syncGmail(db: Db, opts: { api?: GmailApi; fetcher?: Fetcher; now?: Date } = {}): Promise<SyncSummary> {
+export async function syncGmail(db: Db, opts: { api?: GmailApi; fetcher?: Fetcher; now?: Date; sleep?: (ms: number) => Promise<void> } = {}): Promise<SyncSummary> {
   const now = opts.now ?? new Date();
   const account = await getAccount(db);
   if (!canRead(account)) throw new GoogleAuthError("not_connected", "Connect Gmail first.");
-  const summary: SyncSummary = { read: 0, saved: 0, matched: 0, unmatched: 0, statusChanges: 0, markedNoResponse: 0, more: false };
+  const summary: SyncSummary = { read: 0, saved: 0, matched: 0, unmatched: 0, statusChanges: 0, markedNoResponse: 0, more: false, rateLimited: false };
   try {
-    const api = opts.api ?? new GmailApi(await accessToken(db, opts.fetcher), opts.fetcher);
+    const api = opts.api ?? new GmailApi(await accessToken(db, opts.fetcher), opts.fetcher, opts.sleep);
     const from = account!.syncedThrough ? Date.parse(account!.syncedThrough) - 864e5 : +now - FIRST_SYNC_DAYS() * 864e5;
     const listed = await api.listIds(gmailQuery(Math.floor(from / 1000)), MAX_LIST);
     const known = new Set<string>();
@@ -62,8 +62,22 @@ export async function syncGmail(db: Db, opts: { api?: GmailApi; fetcher?: Fetche
     let todo = listed.filter((m) => !known.has(m.id)).reverse();
     if (todo.length > MAX_READ()) { todo = todo.slice(0, MAX_READ()); summary.more = true; }
 
-    const msgs: MailIn[] = new Array(todo.length);
-    await pool(todo, 5, async (m, i) => { msgs[i] = toMailIn(await api.getMessage(m.id)); });
+    // Two at a time keeps well inside Gmail's per-minute quota. If Google still says "too fast",
+    // stop reading, file what was read so far (oldest first, no gaps), and pick up from there next time.
+    const fetched: (MailIn | undefined)[] = new Array(todo.length);
+    let stopped = false;
+    await pool(todo, 2, async (m, i) => {
+      if (stopped) return;
+      try {
+        fetched[i] = toMailIn(await api.getMessage(m.id));
+      } catch (e) {
+        if (!(e instanceof GmailRateLimited)) throw e;
+        stopped = true;
+      }
+    });
+    const gap = fetched.findIndex((m) => !m);
+    const msgs = (gap < 0 ? fetched : fetched.slice(0, gap)) as MailIn[];
+    if (stopped) { summary.more = true; summary.rateLimited = true; }
     summary.read = msgs.length;
     msgs.sort((a, b) => a.date.localeCompare(b.date));
 
@@ -113,10 +127,11 @@ export async function syncGmail(db: Db, opts: { api?: GmailApi; fetcher?: Fetche
     }
     const plan = await applyFollowUpRules(db);
     summary.markedNoResponse = plan.markNoResponse.length;
-    const through = summary.more ? newest : Math.max(newest, +now);
+    // When reading stopped early, only move forward as far as what was actually read.
+    const through = summary.more ? (newest ? new Date(newest).toISOString() : account!.syncedThrough) : new Date(Math.max(newest, +now)).toISOString();
     await db
       .update(googleAccount)
-      .set({ syncedThrough: new Date(through || +now).toISOString(), lastSyncAt: now.toISOString(), lastSyncStatus: "ok", lastSyncError: null, lastSyncSummary: { read: summary.read, saved: summary.saved, matched: summary.matched, unmatched: summary.unmatched, statusChanges: summary.statusChanges } })
+      .set({ syncedThrough: through, lastSyncAt: now.toISOString(), lastSyncStatus: "ok", lastSyncError: null, lastSyncSummary: { read: summary.read, saved: summary.saved, matched: summary.matched, unmatched: summary.unmatched, statusChanges: summary.statusChanges } })
       .where(eq(googleAccount.id, 1));
     return summary;
   } catch (e) {

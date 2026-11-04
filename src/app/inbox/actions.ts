@@ -8,6 +8,7 @@ import { disconnect } from "@/lib/google/account";
 import { GoogleAuthError } from "@/lib/google/oauth";
 import { applyToJob, summarize } from "@/lib/gmail/apply";
 import type { MailKind } from "@/lib/gmail/classify";
+import { GmailRateLimited } from "@/lib/gmail/api";
 import { saveDraft } from "@/lib/gmail/draft";
 import { redact } from "@/lib/gmail/parse";
 import { syncGmail, type SyncSummary } from "@/lib/gmail/sync";
@@ -25,6 +26,7 @@ export async function syncNow(): Promise<Result<SyncSummary>> {
     return { ok: true, value: s };
   } catch (e) {
     refresh();
+    if (e instanceof GmailRateLimited) return { ok: false, error: e.message };
     if (e instanceof GoogleAuthError) return { ok: false, error: e.code === "invalid_grant" ? "Google access expired. Connect Gmail again." : e.message };
     console.error("Gmail sync failed", e);
     return { ok: false, error: "The Gmail sync didn't finish. Try again in a moment." };

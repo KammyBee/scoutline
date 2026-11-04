@@ -17,6 +17,15 @@ const ALLOWED: { method: string; path: RegExp }[] = [
 
 export class GmailBlocked extends Error {}
 
+/** Google's per-minute Gmail quota was hit and retrying a few times didn't help. */
+export class GmailRateLimited extends Error {
+  constructor() {
+    super("Google's per-minute Gmail limit was reached. Wait a minute and sync again; it picks up where it stopped.");
+  }
+}
+
+const isRateLimit = (status: number, text: string) => status === 429 || (status === 403 && /rate ?limit|quota exceeded|userRateLimitExceeded|RESOURCE_EXHAUSTED/i.test(text));
+
 export function isAllowed(method: string, url: string): boolean {
   if (!url.startsWith(BASE)) return false;
   const path = url.slice(BASE.length).split("?")[0];
@@ -28,21 +37,33 @@ export type GmailPart = { mimeType?: string; filename?: string; headers?: GmailH
 export type GmailMessage = { id: string; threadId: string; labelIds?: string[]; snippet?: string; internalDate?: string; payload?: GmailPart };
 
 export class GmailApi {
-  constructor(private token: string, private fetcher: Fetcher = (u, i) => fetch(u, i)) {}
+  constructor(
+    private token: string,
+    private fetcher: Fetcher = (u, i) => fetch(u, i),
+    /** waits between retries when Google says "too fast"; tests pass a no-op */
+    private sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  ) {}
 
   private async call<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
     const url = BASE + path;
     if (!isAllowed(method, url)) throw new GmailBlocked(`Blocked Gmail call: ${method} ${path.split("?")[0]}`);
-    const res = await this.fetcher(url, {
-      method,
-      headers: { authorization: "Bearer " + this.token, ...(body ? { "content-type": "application/json" } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!res.ok) {
+    const waits = [2000, 6000, 15000];
+    for (let attempt = 0; ; attempt++) {
+      const res = await this.fetcher(url, {
+        method,
+        headers: { authorization: "Bearer " + this.token, ...(body ? { "content-type": "application/json" } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (res.ok) return (await res.json()) as T;
       const text = await res.text().catch(() => "");
+      if (isRateLimit(res.status, text)) {
+        if (attempt >= waits.length) throw new GmailRateLimited();
+        const retryAfter = Number(res.headers.get("retry-after"));
+        await this.sleep(retryAfter > 0 && retryAfter <= 60 ? retryAfter * 1000 : waits[attempt]);
+        continue;
+      }
       throw new Error(`Gmail ${res.status}: ${text.slice(0, 200)}`);
     }
-    return (await res.json()) as T;
   }
 
   /** Message ids matching a Gmail search, newest first, up to `max`. */
