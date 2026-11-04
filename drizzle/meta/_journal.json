@@ -29,6 +29,13 @@
       "when": 1793737057753,
       "tag": "0003_gmail",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793752453145,
+      "tag": "0004_gmail_thread_links",
+      "breakpoints": true
     }
   ]
 }
