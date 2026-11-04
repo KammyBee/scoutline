@@ -86,7 +86,7 @@ function GmailCard({ g, toast }: { g: GmailStatus; toast: (m: string) => void })
         const r = await syncNow();
         if (!r.ok) { setLine(r.error); return; }
         const s = r.value;
-        setLine(`Read ${s.read} new message${s.read === 1 ? "" : "s"} · filed ${s.matched} · ${s.unmatched} need a job · ${s.statusChanges} status change${s.statusChanges === 1 ? "" : "s"}` + (s.markedNoResponse ? ` · ${s.markedNoResponse} marked No response` : "") + (s.more ? " · more left, sync again" : ""));
+        setLine(`Read ${s.read} new message${s.read === 1 ? "" : "s"} · filed ${s.matched} · ${s.unmatched} need a job · ${s.statusChanges} status change${s.statusChanges === 1 ? "" : "s"}` + (s.markedNoResponse ? ` · ${s.markedNoResponse} marked No response` : "") + (s.rateLimited ? " · Google's per-minute limit reached, sync again in a minute for the rest" : s.more ? " · more left, sync again" : ""));
       } catch {
         setLine("The Gmail sync didn't finish. Try again in a moment.");
       }

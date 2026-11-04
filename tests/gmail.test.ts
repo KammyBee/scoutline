@@ -262,7 +262,7 @@ describe("Gmail sync", () => {
     process.env.GMAIL_SKIP_DOMAINS = "mycompany.com";
     const g = fakeGoogle(inbox);
     const s = await syncGmail(db, { fetcher: g.fetcher, now: new Date("2026-11-03T20:00:00Z") });
-    expect(s).toMatchObject({ read: 8, matched: 5, unmatched: 1, statusChanges: 4 });
+    expect(s).toMatchObject({ read: 8, matched: 5, unmatched: 1, statusChanges: 4, rateLimited: false });
 
     // Only token refresh, message listing and message reads. Nothing that writes.
     for (const c of g.calls) {
@@ -304,6 +304,31 @@ describe("Gmail sync", () => {
     const again = await syncGmail(db, { fetcher: g.fetcher, now: new Date("2026-11-03T21:00:00Z") });
     expect(again).toMatchObject({ read: 2, saved: 0, statusChanges: 0 }); // only the two skipped non-job messages are re-read
     expect((await db.select().from(schema.events)).length).toBe(evs.length + 4); // globex x2, initech, hooli no-response
+  });
+
+  it("backs off when Google says too fast, keeps what it read, and finishes on the next run", async () => {
+    const db = await setup();
+    await saveGrant(db, ACCT, { access_token: "at0", expires_in: 3600, refresh_token: "rt", scope: SCOPE_READ });
+    clearTokenCacheForTests();
+    const g = fakeGoogle(inbox);
+    let limited = true;
+    const waits: number[] = [];
+    const fetcher: Fetcher = async (url, init) => {
+      if (limited && url.includes("/messages/m4")) {
+        return Response.json({ error: { code: 403, message: "Quota exceeded for quota metric 'Total Query Cost' and limit 'Units per minute per user'" } }, { status: 403 });
+      }
+      return g.fetcher(url, init);
+    };
+    const sleep = async (ms: number) => { waits.push(ms); };
+    const first = await syncGmail(db, { fetcher, sleep, now: new Date("2026-11-03T20:00:00Z") });
+    expect(first).toMatchObject({ rateLimited: true, more: true, read: 3 }); // m1-m3, oldest first, stops before m4
+    expect(waits).toEqual([2000, 6000, 15000]);
+    expect(Date.parse((await getAccount(db))!.syncedThrough!)).toBe(Date.parse("2026-10-30T18:00:00Z"));
+    limited = false;
+    const second = await syncGmail(db, { fetcher, sleep, now: new Date("2026-11-03T20:05:00Z") });
+    expect(second.rateLimited).toBe(false);
+    const saved = (await db.select().from(schema.emails)).map((e) => e.id).sort();
+    expect(saved).toEqual(["m1", "m2", "m3", "m4", "m7", "m8"]);
   });
 
   it("marks the account for reconnect when Google revokes access", async () => {
