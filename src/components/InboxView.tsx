@@ -20,6 +20,8 @@ const ERRORS: Record<string, string> = {
   state: "The Google link expired. Try again.",
   unverified: "Google says that email address isn't verified.",
   google_error: "Google didn't connect. Try again in a moment.",
+  scope_read: "Gmail wasn't connected: the \"Read your email\" box on Google's screen was left unticked. Connect again and tick it.",
+  scope_drafts: "Drafts weren't turned on: the drafts box on Google's screen was left unticked. Try again and tick it.",
 };
 
 export function InboxView({ data, connected, error }: { data: InboxData; connected: string | null; error: string | null }) {

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "@/db/client";
 import { saveGrant } from "@/lib/google/account";
-import { SCOPE_READ, allowedEmail, exchangeCode, googleConfigured, readIdToken, redirectUri } from "@/lib/google/oauth";
+import { SCOPE_DRAFTS, SCOPE_READ, allowedEmail, exchangeCode, googleConfigured, readIdToken, redirectUri } from "@/lib/google/oauth";
 import { SESSION_COOKIE, SESSION_DAYS, createSessionToken, sessionValid } from "@/lib/session";
 import { OAUTH_COOKIE, readState } from "../state";
 
@@ -40,7 +40,10 @@ export async function GET(request: NextRequest) {
   const signedIn = await sessionValid(request.cookies.get(SESSION_COOKIE)?.value);
   if (saved.purpose !== "signin" && !signedIn) return fail(request, "signin_first");
 
+  // Google lets you untick the Gmail checkbox on its consent screen. Connecting only counts if it was ticked.
   const granted = (tokens.scope ?? "").split(" ");
+  if (saved.purpose === "connect" && !granted.includes(SCOPE_READ)) return fail(request, "scope_read", back);
+  if (saved.purpose === "drafts" && !granted.includes(SCOPE_DRAFTS)) return fail(request, "scope_drafts", back);
   if (granted.includes(SCOPE_READ)) await saveGrant(await getDb(), email, tokens);
 
   const res = NextResponse.redirect(new URL(saved.purpose === "signin" ? saved.next : saved.next + (saved.next.includes("?") ? "&" : "?") + "connected=" + saved.purpose, request.url));
