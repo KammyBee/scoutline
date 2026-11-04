@@ -164,6 +164,7 @@ function Row({ j, today, on, onOpen }: { j: JobRow; today: string; on: boolean; 
       <span className="jr-flags">
         {act ? <span className="pill act">Action needed</span> : due ? <span className="pill due">Follow up</span> : null}
         {j.hasPrep && (j.status === "interviewing" || j.status === "offer") ? <span className="pill prep">Prep ready</span> : null}
+        {j.hasLetter && (j.status === "new" || j.status === "saved") ? <span className="pill cl">Letter ready</span> : null}
         {isSideGig(j) ? <span className="pill side-gig">Side gig</span> : null}
       </span>
       <span className="jr-when">

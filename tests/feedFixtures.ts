@@ -64,3 +64,50 @@ export const ashbyList = {
     { id: "ash-2", title: "Business Systems Engineer", location: "Remote", isListed: false, jobUrl: "https://jobs.ashbyhq.com/chipco/ash-2", publishedAt: "2026-10-29T18:00:00.000Z" },
   ],
 };
+
+export const smartRecruitersList = {
+  offset: 0,
+  limit: 100,
+  totalFound: 3,
+  content: [
+    { id: "744000001", name: "SAP MM Analyst", releasedDate: "2026-10-30T16:00:00.000Z", location: { city: "San Jose", region: "CA", country: "us", remote: false }, typeOfEmployment: { label: "Full-time" } },
+    { id: "744000002", name: "Integration Developer", releasedDate: "2026-10-29T16:00:00.000Z", location: { city: "Austin", region: "TX", country: "us", remote: true }, typeOfEmployment: { label: "Full-time" } },
+    { id: "744000003", name: "Marketing Manager", releasedDate: "2026-10-29T16:00:00.000Z", location: { city: "San Jose", region: "CA", country: "us" } },
+  ],
+};
+
+export const smartRecruitersJob1 = {
+  id: "744000001",
+  jobAd: { sections: { jobDescription: { text: "<p>Support <b>SAP S/4HANA</b> MM.</p>" }, qualifications: { text: "<ul><li>ABAP</li></ul>" } } },
+};
+
+export const workableAccount = {
+  name: "Gearworks",
+  jobs: [
+    { title: "NetSuite Administrator", shortcode: "AB12CD34", employment_type: "Full-time", telecommuting: true, url: "https://apply.workable.com/j/AB12CD34", published_on: "2026-10-27", country: "United States", city: "Denver", state: "Colorado", locations: [{ country: "United States", countryCode: "US", city: "Denver", region: "Colorado" }], description: "<p>Own NetSuite and SuiteScript.</p>" },
+    { title: "Field Sales Rep", shortcode: "ZZ99", telecommuting: false, published_on: "2026-10-27", locations: [{ countryCode: "US", city: "Oakland", region: "California" }] },
+  ],
+};
+
+/** Search results from a Workday board; the search text decides what comes back. */
+export function workdaySearch(searchText: string, offset: number) {
+  if (offset > 0) return { total: 2, jobPostings: [] };
+  const all = [
+    { title: "SAP FICO Analyst", externalPath: "/job/San-Jose-CA/SAP-FICO-Analyst_R100", locationsText: "2 Locations", postedOn: "Posted 3 Days Ago", bulletFields: ["R100"] },
+    { title: "Oracle EBS Developer", externalPath: "/job/Remote-USA/Oracle-EBS-Developer_R101", locationsText: "Remote, USA", postedOn: "Posted Yesterday", bulletFields: ["R101"] },
+    { title: "Senior SAP Architect", externalPath: "/job/San-Jose-CA/Senior-SAP-Architect_R102", locationsText: "San Jose, CA", postedOn: "Posted Today", bulletFields: ["R102"] },
+    { title: "ERP Analyst", externalPath: "/job/Bangalore/ERP-Analyst_R103", locationsText: "Bangalore, India", postedOn: "Posted 30+ Days Ago", bulletFields: ["R103"] },
+  ];
+  const s = searchText.toLowerCase();
+  const hits = all.filter((j) => j.title.toLowerCase().includes(s));
+  return { total: hits.length, jobPostings: hits };
+}
+
+export const workdayDetails: Record<string, unknown> = {
+  "/job/San-Jose-CA/SAP-FICO-Analyst_R100": {
+    jobPostingInfo: { title: "SAP FICO Analyst", jobDescription: "<p>Run SAP FI/CO. Pay: $110,000 - $135,000.</p>", location: "San Jose, CA", additionalLocations: ["Austin, TX"], startDate: "2026-10-29", timeType: "Full time", remoteType: "Hybrid", country: { descriptor: "United States of America" }, externalUrl: "https://chipworks.wd5.myworkdayjobs.com/External/job/San-Jose-CA/SAP-FICO-Analyst_R100" },
+  },
+  "/job/Remote-USA/Oracle-EBS-Developer_R101": {
+    jobPostingInfo: { title: "Oracle EBS Developer", jobDescription: "<p>PL/SQL and Oracle EBS.</p>", location: "Remote, USA", startDate: "2026-10-31", remoteType: "Remote", country: { descriptor: "United States of America" } },
+  },
+};

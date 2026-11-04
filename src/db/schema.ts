@@ -24,7 +24,7 @@ export type ThankYou = { draftUrl?: string; createdAt?: string; to?: string };
 export const companies = pgTable("companies", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
-  ats: text("ats"), // greenhouse | lever | ashby | null
+  ats: text("ats"), // greenhouse | lever | ashby | smartrecruiters | workable | workday | null
   board: text("board"), // the board token / site name on that ATS
   active: boolean("active").notNull().default(true),
   /** why it's on the list, e.g. "R&D hardware" */
@@ -124,6 +124,10 @@ export const applications = pgTable(
     coverLetter: text("cover_letter"),
     resumeName: text("resume_name"),
     resumeUrl: text("resume_url"),
+    /** who picked the resume: rules | claude | you | import. Claude never replaces your own pick. */
+    resumePickedBy: text("resume_picked_by"),
+    /** who wrote the cover letter: claude-auto (drafted after a check) | claude | you | import */
+    coverLetterBy: text("cover_letter_by"),
     kitTips: jsonb("kit_tips").$type<string[]>().notNull().default([]),
     actionNeeded: jsonb("action_needed").$type<ActionNeeded | null>(),
     interviewAt: timestamp("interview_at", { withTimezone: true, mode: "string" }),
@@ -209,7 +213,7 @@ export const aiCalls = pgTable(
     id: serial("id").primaryKey(),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
     day: date("day", { mode: "string" }).notNull(),
-    purpose: text("purpose").notNull(), // score | cover_letter | answer
+    purpose: text("purpose").notNull(), // score | cover_letter | auto_letter | answer
     model: text("model").notNull(),
     postingId: text("posting_id"),
     inputTokens: integer("input_tokens").notNull().default(0),

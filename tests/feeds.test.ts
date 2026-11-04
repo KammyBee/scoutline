@@ -5,12 +5,13 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { describe, expect, it } from "vitest";
 import * as schema from "@/db/schema";
-import { parseAshbyList, parseBoardUrl, parseGreenhouseList, parseLeverList, parseMoneyRange } from "@/lib/feeds/boards";
+import { WORKDAY_SEARCHES, boardPublicUrl, fetchBoard, parseAshbyList, parseBoardUrl, parseGreenhouseList, parseLeverList, parseMoneyRange, parseSmartRecruitersList, parseWorkableList, workdayPostedOn } from "@/lib/feeds/boards";
 import { runFeeds } from "@/lib/feeds/ingest";
 import { judge, placeFor, titleTier } from "@/lib/feeds/rules";
 import { htmlToText } from "@/lib/feeds/text";
 import type { Fetcher } from "@/lib/feeds/types";
-import { ashbyList, greenhouseJob101, greenhouseList, leverList } from "./feedFixtures";
+import { pickResume } from "@/lib/resumes";
+import { ashbyList, greenhouseJob101, greenhouseList, leverList, smartRecruitersJob1, smartRecruitersList, workableAccount, workdayDetails, workdaySearch } from "./feedFixtures";
 
 const TODAY = "2026-11-01";
 
@@ -43,7 +44,56 @@ describe("board readers", () => {
     expect(parseBoardUrl("https://boards.greenhouse.io/embed/job_app?for=samsara&token=1")).toEqual({ ats: "greenhouse", board: "samsara" });
     expect(parseBoardUrl("jobs.lever.co/zoox/abc-123/apply")).toEqual({ ats: "lever", board: "zoox" });
     expect(parseBoardUrl("https://jobs.ashbyhq.com/notion")).toEqual({ ats: "ashby", board: "notion" });
+    expect(parseBoardUrl("https://jobs.smartrecruiters.com/Visa/744000001-sap-analyst")).toEqual({ ats: "smartrecruiters", board: "Visa" });
+    expect(parseBoardUrl("https://careers.smartrecruiters.com/BoschGroup")).toEqual({ ats: "smartrecruiters", board: "BoschGroup" });
+    expect(parseBoardUrl("https://apply.workable.com/gearworks/j/AB12CD34/")).toEqual({ ats: "workable", board: "gearworks" });
+    expect(parseBoardUrl("https://apply.workable.com/j/AB12CD34")).toBeNull();
+    expect(parseBoardUrl("https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/US-CA-Santa-Clara/SAP-Analyst_JR1")).toEqual({ ats: "workday", board: "nvidia.wd5/NVIDIAExternalCareerSite" });
+    expect(parseBoardUrl("https://amat.wd1.myworkdayjobs.com/External")).toEqual({ ats: "workday", board: "amat.wd1/External" });
+    expect(boardPublicUrl("workday", "amat.wd1/External")).toBe("https://amat.wd1.myworkdayjobs.com/External");
     expect(parseBoardUrl("https://www.linkedin.com/jobs/view/1")).toBeNull();
+  });
+  it("reads SmartRecruiters and Workable lists", () => {
+    const sr = parseSmartRecruitersList("Visa", smartRecruitersList);
+    expect(sr[0]).toMatchObject({ title: "SAP MM Analyst", location: "San Jose, CA", country: "US", url: "https://jobs.smartrecruiters.com/Visa/744000001", posted: "2026-10-30" });
+    expect(sr[1]).toMatchObject({ workplace: "remote", location: "Austin, TX; Remote" });
+    const wk = parseWorkableList("gearworks", workableAccount);
+    expect(wk[0]).toMatchObject({ title: "NetSuite Administrator", workplace: "remote", country: "US", posted: "2026-10-27", url: "https://apply.workable.com/j/AB12CD34" });
+    expect(wk[0].description).toContain("SuiteScript");
+  });
+  it("turns Workday's 'Posted N Days Ago' into dates", () => {
+    expect(workdayPostedOn("Posted Today", TODAY)).toBe(TODAY);
+    expect(workdayPostedOn("Posted Yesterday", TODAY)).toBe("2026-10-31");
+    expect(workdayPostedOn("Posted 3 Days Ago", TODAY)).toBe("2026-10-29");
+    expect(workdayPostedOn("Posted 30+ Days Ago", TODAY)).toBe("2026-10-01");
+  });
+  it("searches Workday boards and opens only titles worth a look", async () => {
+    const { fetcher, calls, posts } = mockFetcher();
+    const r = await fetchBoard(fetcher, "workday", "chipworks.wd5/External", TODAY);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.jobs.map((j) => j.title).sort()).toEqual(["ERP Analyst", "Oracle EBS Developer", "SAP FICO Analyst", "Senior SAP Architect"]);
+    expect(posts.length).toBe(WORKDAY_SEARCHES.length); // one page each: every search came back short
+    const fico = r.jobs.find((j) => j.title === "SAP FICO Analyst")!;
+    expect(fico).toMatchObject({ location: "San Jose, CA; Austin, TX", workplace: "hybrid", country: "US", posted: "2026-10-29", payMin: 110000, payMax: 135000 });
+    // "Senior SAP Architect" fails the title filter, so its detail page is never requested.
+    expect(calls.some((u) => u.includes("Senior-SAP-Architect"))).toBe(false);
+  });
+});
+
+describe("resume pick", () => {
+  it("matches the resume to the kind of job", () => {
+    expect(pickResume("SAP MM Analyst").name).toBe("SAP");
+    expect(pickResume("SAP BusinessObjects Developer").name).toBe("SAP BI");
+    expect(pickResume("Epicor Kinetic Developer").name).toBe("Epicor");
+    expect(pickResume("Integration Engineer").name).toBe("Integrations");
+    expect(pickResume("Business Systems Analyst").name).toBe("ERP Analyst");
+    expect(pickResume("Business Systems Analyst", "Our SAP S/4 rollout. SAP MM experience.").name).toBe("SAP");
+    expect(pickResume("NetSuite Administrator").name).toBe("ERP Support");
+    expect(pickResume("ERP Developer").name).toBe("App & ERP Dev");
+    expect(pickResume("Full Stack Engineer").name).toBe("Full Stack v2");
+    expect(pickResume(".NET Developer").name).toBe("App Dev");
+    expect(pickResume("Software Engineer II").name).toBe("Software Dev");
+    expect(pickResume("Office Coordinator").name).toBe("General");
   });
 });
 
@@ -71,21 +121,35 @@ describe("filters", () => {
   });
 });
 
-function mockFetcher(): { fetcher: Fetcher; calls: string[] } {
+function mockFetcher(): { fetcher: Fetcher; calls: string[]; posts: string[] } {
   const calls: string[] = [];
+  const posts: string[] = [];
   const routes: Record<string, unknown> = {
     "https://boards-api.greenhouse.io/v1/boards/acmehw/jobs": greenhouseList,
     "https://boards-api.greenhouse.io/v1/boards/acmehw/jobs/101": greenhouseJob101,
     "https://api.lever.co/v0/postings/robocorp?mode=json": leverList,
     "https://api.ashbyhq.com/posting-api/job-board/chipco?includeCompensation=true": ashbyList,
+    "https://api.smartrecruiters.com/v1/companies/BigCo/postings?limit=100&offset=0": smartRecruitersList,
+    "https://api.smartrecruiters.com/v1/companies/BigCo/postings/744000001": smartRecruitersJob1,
+    "https://apply.workable.com/api/v1/widget/accounts/gearworks?details=true": workableAccount,
   };
-  const fetcher: Fetcher = async (url) => {
+  const WD = "https://chipworks.wd5.myworkdayjobs.com/wday/cxs/chipworks/External";
+  const fetcher: Fetcher = async (url, init) => {
     calls.push(url);
+    if (url === WD + "/jobs" && init?.method === "POST") {
+      const b = JSON.parse(init.body ?? "{}");
+      posts.push(b.searchText);
+      return { ok: true, status: 200, json: async () => workdaySearch(b.searchText, b.offset) };
+    }
+    if (url.startsWith(WD + "/job/")) {
+      const d = workdayDetails[url.slice(WD.length)];
+      return d ? { ok: true, status: 200, json: async () => d } : { ok: false, status: 404, json: async () => ({}) };
+    }
     if (url in routes) return { ok: true, status: 200, json: async () => routes[url] };
     if (url.includes("/jobs/")) return { ok: true, status: 200, json: async () => ({ content: "<p>Details</p>" }) };
     return { ok: false, status: 404, json: async () => ({}) };
   };
-  return { fetcher, calls };
+  return { fetcher, calls, posts };
 }
 
 describe("runFeeds", () => {
@@ -128,6 +192,33 @@ describe("runFeeds", () => {
     expect(again.added).toBe(0);
     expect(again.companiesChecked).toBe(3); // Ghost is switched off now
     expect((await db.select().from(schema.feedRuns)).length).toBe(2);
+    await client.close();
+  });
+
+  it("brings in jobs from SmartRecruiters, Workable and Workday and picks a resume for each", async () => {
+    const client = new PGlite();
+    const db = drizzle(client, { schema }) as unknown as NodePgDatabase<typeof schema>;
+    await migrate(db as never, { migrationsFolder: "drizzle" });
+    await db.insert(schema.companies).values([
+      { name: "BigCo", ats: "smartrecruiters", board: "BigCo" },
+      { name: "Gearworks", ats: "workable", board: "gearworks" },
+      { name: "ChipWorks", ats: "workday", board: "chipworks.wd5/External" },
+    ]);
+    const { fetcher } = mockFetcher();
+    const s = await runFeeds(db, { fetcher, trigger: "script", today: TODAY });
+    expect(s.failed).toBe(0);
+    // Dropped: Marketing Manager (title), Senior SAP Architect (title), ERP Analyst in Bangalore (location).
+    expect(s.newJobs.map((j) => j.title).sort()).toEqual(["Integration Developer", "NetSuite Administrator", "Oracle EBS Developer", "SAP FICO Analyst", "SAP MM Analyst"]);
+    const rows = await db.select().from(schema.postings).innerJoin(schema.applications, eq(schema.applications.postingId, schema.postings.id));
+    const by = (t: string) => rows.find((r) => r.postings.title === t)!;
+    expect(by("SAP MM Analyst").postings).toMatchObject({ source: "SmartRecruiters · BigCo", mode: "onsite", atsRef: "smartrecruiters:BigCo:744000001" });
+    expect(by("SAP MM Analyst").postings.description).toContain("S/4HANA");
+    expect(by("SAP FICO Analyst").postings).toMatchObject({ source: "Workday · ChipWorks", mode: "hybrid", payMin: 110000 });
+    expect(by("NetSuite Administrator").postings).toMatchObject({ mode: "remote", source: "Workable · Gearworks" });
+    expect(by("SAP MM Analyst").applications).toMatchObject({ resumeName: "SAP", resumePickedBy: "rules" });
+    expect(by("Integration Developer").applications.resumeName).toBe("Integrations");
+    expect(by("NetSuite Administrator").applications.resumeName).toBe("ERP Support");
+    expect(by("Integration Developer").applications.resumeUrl).toMatch(/^https:\/\/claude\.ai\/artifact\//);
     await client.close();
   });
 });

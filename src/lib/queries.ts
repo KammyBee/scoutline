@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db/client";
 import { aiConfigured } from "./ai/claude";
 import { todayIn } from "./dates";
@@ -31,6 +31,7 @@ const rowColumns = {
   interviewAt: applications.interviewAt,
   prep: applications.prep,
   fit: matches.fit,
+  hasLetter: sql<boolean>`coalesce(length(${applications.coverLetter}), 0) > 0`,
 };
 
 export async function getPipeline(): Promise<PipelineData> {
@@ -50,8 +51,9 @@ export async function getPipeline(): Promise<PipelineData> {
     const cur = last.get(e.postingId);
     if (!cur || e.date >= cur.date) last.set(e.postingId, { kind: e.kind, date: e.date });
   }
-  const jobs: JobRow[] = rows.map(({ prep, fit, ...r }) => ({
+  const jobs: JobRow[] = rows.map(({ prep, fit, hasLetter, ...r }) => ({
     ...r,
+    hasLetter: !!hasLetter,
     hasPrep: !!prep?.text,
     fit: fit ?? 3,
     lastEvent: last.get(r.id) ?? null,
@@ -76,6 +78,8 @@ export async function getJobDetail(id: string): Promise<JobDetail | null> {
       coverLetter: applications.coverLetter,
       resumeName: applications.resumeName,
       resumeUrl: applications.resumeUrl,
+      resumePickedBy: applications.resumePickedBy,
+      coverLetterBy: applications.coverLetterBy,
       kitTips: applications.kitTips,
       interviewEnd: applications.interviewEnd,
       thankYou: applications.thankYou,
@@ -90,9 +94,10 @@ export async function getJobDetail(id: string): Promise<JobDetail | null> {
     .from(events)
     .where(eq(events.postingId, id))
     .orderBy(desc(events.date), desc(events.id));
-  const { prep, fit, hits, gaps, ...rest } = row;
+  const { prep, fit, hits, gaps, hasLetter, ...rest } = row;
   return {
     ...rest,
+    hasLetter: !!hasLetter,
     hits: hits ?? [],
     gaps: gaps ?? [],
     prep: prep ?? null,

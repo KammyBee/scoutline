@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { refresh } from "next/cache";
 import { getDb, schema } from "@/db/client";
 import { seedStarterList } from "@/lib/companies";
-import { parseBoardUrl } from "@/lib/feeds/boards";
+import { parseBoardUrl, workdayParts } from "@/lib/feeds/boards";
 import { testBoard } from "@/lib/feeds/ingest";
 import { checkAndScore } from "@/lib/feeds/run";
 import { ATS_LABEL, ATS_LIST, type Ats } from "@/lib/feeds/types";
@@ -30,10 +30,10 @@ export async function addCompany(_prev: AddState, form: FormData): Promise<AddSt
   if (!target) {
     const ats = String(form.get("ats") ?? "") as Ats;
     const board = String(form.get("board") ?? link).trim();
-    if (ATS_LIST.includes(ats) && board && !board.includes("/")) target = { ats, board };
+    if (ATS_LIST.includes(ats) && board && (ats === "workday" ? !!workdayParts(board) : !board.includes("/"))) target = { ats, board };
   }
   if (!name) return { error: "Enter the company's name." };
-  if (!target) return { error: "Paste a link to the company's Greenhouse, Lever or Ashby job board (or one of their job postings), or choose the system and type the board name." };
+  if (!target) return { error: "Paste a link to the company's Greenhouse, Lever, Ashby, SmartRecruiters, Workable or Workday job board (or one of their job postings), or choose the system and type the board name." };
   const test = await testBoard(target.ats, target.board);
   if (!test.ok) {
     return { error: test.status === "not_found" ? `There's no ${ATS_LABEL[target.ats]} job board named "${target.board}". Check the link.` : `Couldn't reach the job board (${test.error}). Try again in a moment.` };

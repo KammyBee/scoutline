@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { archiveJob, draftAnswer, draftCoverLetter, likeJob, loadJob, markActionDone, saveDate, saveText, scoreJob, setFit, setStatus } from "@/app/actions";
+import { archiveJob, draftAnswer, draftCoverLetter, likeJob, loadJob, markActionDone, saveDate, saveText, scoreJob, setFit, setResume, setStatus } from "@/app/actions";
 import { addDays, fmtDate } from "@/lib/dates";
+import { RESUMES } from "@/lib/resumes";
 import { KINDS, PASS_REASONS, answersText, cap, kindLabel, openAction, payText, safeUrl, statusLabel } from "@/lib/jobView";
 import type { JobDetail, Status } from "@/lib/types";
 import { FitBars } from "./FitBars";
@@ -217,6 +218,7 @@ function Overview({ j, pending, run, reload, onArchived, openPrep, aiReady, setJ
 
 function Apply({ j, answers, copy, run, aiReady }: { j: JobDetail; answers: Record<string, string>; copy: (t: string | null | undefined, ok: string) => void; run: Run; aiReady: boolean }) {
   const [letter, setLetter] = useState(j.coverLetter ?? "");
+  const [resume, setResume_] = useState({ name: j.resumeName, url: j.resumeUrl, by: j.resumePickedBy });
   const [writing, setWriting] = useState(false);
   const [sure, setSure] = useState(false);
   const [err, setErr] = useState("");
@@ -234,13 +236,25 @@ function Apply({ j, answers, copy, run, aiReady }: { j: JobDetail; answers: Reco
       <div className="kit">
         <h3>Resume</h3>
         <div className="row-btns">
-          {safeUrl(j.resumeUrl) ? <a className="btn primary" href={safeUrl(j.resumeUrl)!} target="_blank" rel="noopener noreferrer">Open {j.resumeName ?? "best-fit"} resume ↗</a> : <span className="meta-row">No resume picked yet for this job.</span>}
+          {safeUrl(resume.url) ? <a className="btn primary" href={safeUrl(resume.url)!} target="_blank" rel="noopener noreferrer">Open {resume.name ?? "best-fit"} resume ↗</a> : <span className="meta-row">No resume picked yet for this job.</span>}
+          <select aria-label="Resume for this job" value={resume.name ?? ""} onChange={(e) => {
+            const r = RESUMES.find((x) => x.name === e.target.value);
+            if (!r) return;
+            setResume_({ name: r.name, url: r.url, by: "you" });
+            run(() => setResume(j.id, r.name), "Resume saved");
+          }}>
+            {resume.name && !RESUMES.some((x) => x.name === resume.name) ? <option value={resume.name}>{resume.name}</option> : null}
+            {!resume.name ? <option value="">Pick a resume…</option> : null}
+            {RESUMES.map((r) => <option key={r.name} value={r.name}>{r.name}: {r.bestFor}</option>)}
+          </select>
           <button type="button" className="btn" onClick={() => { const t = answersText(answers); if (!t) copy("", ""); else copy(t, "Screening answers copied"); }}>Copy my screening answers</button>
         </div>
+        {resume.name && (resume.by === "claude" || resume.by === "rules") ? <span className="meta-row">{resume.by === "claude" ? "Claude picked this resume for the posting." : "Picked from the job title. Claude will refine it when it scores the job."} Choose another and it stays your pick.</span> : null}
         {j.kitTips.length ? (<><span className="meta-row">Lead with:</span><ul>{j.kitTips.map((t) => <li key={t}>{t}</li>)}</ul></>) : null}
       </div>
       <div className="field wide">
         <label htmlFor={"cl-" + j.id}>Cover letter</label>
+        {j.coverLetterBy === "claude-auto" && letter === (j.coverLetter ?? "") ? <span className="meta-row">Claude drafted this after the last check because it scored the job {j.fit}/5. Read it through before you use it.</span> : null}
         <textarea className="cl" id={"cl-" + j.id} value={letter} placeholder="No cover letter yet for this job." onChange={(e) => setLetter(e.target.value)}
           onBlur={() => { if (letter !== (j.coverLetter ?? "")) run(() => saveText(j.id, "coverLetter", letter), "Cover letter saved"); }} />
         <div className="detail-actions">
