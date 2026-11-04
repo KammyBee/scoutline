@@ -111,3 +111,42 @@ export const workdayDetails: Record<string, unknown> = {
     jobPostingInfo: { title: "Oracle EBS Developer", jobDescription: "<p>PL/SQL and Oracle EBS.</p>", location: "Remote, USA", startDate: "2026-10-31", remoteType: "Remote", country: { descriptor: "United States of America" } },
   },
 };
+
+export const usajobsSearch = {
+  SearchResult: {
+    SearchResultItems: [
+      {
+        MatchedObjectId: "800001",
+        MatchedObjectDescriptor: {
+          PositionID: "IT-26-001", PositionTitle: "IT Specialist (APPSW)", PositionURI: "https://www.usajobs.gov/job/800001", OrganizationName: "Internal Revenue Service", DepartmentName: "Department of the Treasury",
+          PositionLocation: [{ LocationName: "San Francisco, California", CountryCode: "United States", CityName: "San Francisco" }],
+          PublicationStartDate: "2026-10-28T00:00:00.0000", PositionRemuneration: [{ MinimumRange: "98000", MaximumRange: "127000", RateIntervalCode: "PA" }],
+          PositionSchedule: [{ Name: "Full-time" }], UserArea: { Details: { JobSummary: "Develop and support SAP-based financial applications.", RemoteIndicator: false } },
+        },
+      },
+      {
+        MatchedObjectId: "800002",
+        MatchedObjectDescriptor: { PositionTitle: "Supervisory IT Specialist", PositionURI: "https://www.usajobs.gov/job/800002", OrganizationName: "GSA", PositionLocation: [{ LocationName: "Washington, District of Columbia", CountryCode: "United States" }], PublicationStartDate: "2026-10-29T00:00:00.0000", UserArea: { Details: { RemoteIndicator: true } } },
+      },
+    ],
+  },
+};
+
+export const remotiveList = {
+  jobs: [
+    { id: 9001, url: "https://remotive.com/remote-jobs/software-dev/netsuite-developer-9001", title: "NetSuite Developer", company_name: "Gearworks Inc.", job_type: "full_time", publication_date: "2026-10-30T10:00:00", candidate_required_location: "USA", salary: "$100k - $125k", description: "<p>SuiteScript and SQL.</p>" },
+    // The same job Gearworks posts on its own Workable board, with a location tag added.
+    { id: 9002, url: "https://remotive.com/remote-jobs/x/netsuite-admin-9002", title: "NetSuite Administrator (Remote)", company_name: "Gearworks", job_type: "full_time", publication_date: "2026-10-30T10:00:00", candidate_required_location: "USA", description: "<p>Admin.</p>" },
+    { id: 9003, url: "https://remotive.com/remote-jobs/x/erp-analyst-9003", title: "ERP Analyst", company_name: "Euro GmbH", publication_date: "2026-10-30T10:00:00", candidate_required_location: "Europe" },
+  ],
+};
+
+export function jobicySearch(tag: string) {
+  const all = [
+    { id: 7001, url: "https://jobicy.com/jobs/7001-erp-integration-developer", jobTitle: "ERP Integration Developer", companyName: "Plantline", jobGeo: "USA", jobType: ["full-time"], pubDate: "2026-10-31 09:00:00", annualSalaryMin: "105000", annualSalaryMax: "130000", salaryCurrency: "USD", jobDescription: "<p>Integrations for our ERP.</p>" },
+    // Also on Remotive (as "NetSuite Developer" at "Gearworks Inc."): must be added only once.
+    { id: 7002, url: "https://jobicy.com/jobs/7002-netsuite-developer", jobTitle: "NetSuite Developer - Remote, US", companyName: "Gearworks", jobGeo: "USA", pubDate: "2026-10-30 09:00:00", jobDescription: "<p>SuiteScript.</p>" },
+  ];
+  const t = tag.toLowerCase();
+  return { jobs: all.filter((j) => j.jobTitle.toLowerCase().includes(t)) };
+}

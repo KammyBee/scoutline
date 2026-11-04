@@ -1,5 +1,7 @@
 import { addDays, todayIn } from "../dates";
 import { titleTier } from "./rules";
+import { fetchSearch } from "./search";
+import { isSearchSource } from "./types";
 import { htmlToText, isoDay } from "./text";
 import type { Ats, BoardResult, FeedJob, Fetcher } from "./types";
 
@@ -7,20 +9,20 @@ const UA = { "User-Agent": "Scoutline (personal job search; github.com/KammyBee/
 const TIMEOUT_MS = 20000;
 
 type Obj = Record<string, unknown>;
-const str = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : String(v));
-const obj = (v: unknown): Obj => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
-const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+export const str = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : String(v));
+export const obj = (v: unknown): Obj => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
+export const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : null);
 
-type JsonResult = { ok: true; data: unknown } | { ok: false; status: "not_found" | "error"; error: string };
+export type JsonResult = { ok: true; data: unknown } | { ok: false; status: "not_found" | "error"; error: string };
 
-async function getJson(fetcher: Fetcher, url: string, post?: unknown): Promise<JsonResult> {
+export async function getJson(fetcher: Fetcher, url: string, post?: unknown, headers?: Record<string, string>): Promise<JsonResult> {
   try {
     const res = await fetcher(
       url,
       post === undefined
-        ? { signal: AbortSignal.timeout(TIMEOUT_MS), headers: UA }
-        : { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { ...UA, "Content-Type": "application/json" }, method: "POST", body: JSON.stringify(post) },
+        ? { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { ...UA, ...headers } }
+        : { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { ...UA, ...headers, "Content-Type": "application/json" }, method: "POST", body: JSON.stringify(post) },
     );
     if (res.status === 404) return { ok: false, status: "not_found", error: "Board not found (404)" };
     if (!res.ok) return { ok: false, status: "error", error: `HTTP ${res.status}` };
@@ -326,6 +328,9 @@ export function boardApiUrl(ats: Ats, board: string): string {
 }
 
 export function boardPublicUrl(ats: Ats, board: string): string {
+  if (ats === "usajobs") return "https://www.usajobs.gov/";
+  if (ats === "remotive") return "https://remotive.com/";
+  if (ats === "jobicy") return "https://jobicy.com/";
   if (ats === "greenhouse") return `https://job-boards.greenhouse.io/${board}`;
   if (ats === "lever") return `https://jobs.lever.co/${board}`;
   if (ats === "smartrecruiters") return `https://careers.smartrecruiters.com/${board}`;
@@ -339,6 +344,7 @@ export function boardPublicUrl(ats: Ats, board: string): string {
 
 /** Reads every open job on one company's board (for Workday, every job matching your kinds of work). */
 export async function fetchBoard(fetcher: Fetcher, ats: Ats, board: string, today = todayIn()): Promise<BoardResult> {
+  if (isSearchSource(ats)) return fetchSearch(fetcher, ats);
   if (ats === "workday") return fetchWorkday(fetcher, board, today);
   if (ats === "smartrecruiters") return fetchSmartRecruiters(fetcher, board);
   const r = await getJson(fetcher, boardApiUrl(ats, board));

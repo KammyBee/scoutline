@@ -10,8 +10,11 @@ import { runFeeds } from "@/lib/feeds/ingest";
 import { judge, placeFor, titleTier } from "@/lib/feeds/rules";
 import { htmlToText } from "@/lib/feeds/text";
 import type { Fetcher } from "@/lib/feeds/types";
+import { looseKey, normUrl } from "@/lib/dedupe";
+import { hideDuplicates } from "@/lib/dupes";
 import { pickResume } from "@/lib/resumes";
-import { ashbyList, greenhouseJob101, greenhouseList, leverList, smartRecruitersJob1, smartRecruitersList, workableAccount, workdayDetails, workdaySearch } from "./feedFixtures";
+import { SEARCH_TERMS, fetchSearch, parseJobicy, parseRemotive, parseUsajobs } from "@/lib/feeds/search";
+import { jobicySearch, remotiveList, usajobsSearch, ashbyList, greenhouseJob101, greenhouseList, leverList, smartRecruitersJob1, smartRecruitersList, workableAccount, workdayDetails, workdaySearch } from "./feedFixtures";
 
 const TODAY = "2026-11-01";
 
@@ -80,6 +83,68 @@ describe("board readers", () => {
   });
 });
 
+describe("broad search", () => {
+  it("reads USAJOBS, Remotive and Jobicy results with each job's own employer", () => {
+    const [it1, sup] = parseUsajobs(usajobsSearch);
+    expect(it1).toMatchObject({ title: "IT Specialist (APPSW)", company: "Internal Revenue Service", country: "US", location: "San Francisco, California", payMin: 98000, payMax: 127000, posted: "2026-10-28" });
+    expect(judge(it1, TODAY)).toMatchObject({ keep: true, mode: "onsite" });
+    expect(sup.workplace).toBe("remote");
+    expect(judge(sup, TODAY)).toEqual({ keep: false, reason: "title" });
+    const rem = parseRemotive(remotiveList);
+    expect(rem[0]).toMatchObject({ company: "Gearworks Inc.", workplace: "remote", payMin: 100000, payMax: 125000 });
+    expect(judge(rem[2], TODAY)).toEqual({ keep: false, reason: "location" });
+    const jb = parseJobicy(jobicySearch("erp"));
+    expect(jb[0]).toMatchObject({ company: "Plantline", posted: "2026-10-31", payMin: 105000 });
+  });
+  it("asks for a USAJOBS key instead of failing quietly", async () => {
+    const { fetcher } = mockFetcher();
+    const r = await fetchSearch(fetcher, "usajobs", {});
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining("USAJOBS_API_KEY") });
+  });
+  it("sends the USAJOBS key and email in the headers it requires", async () => {
+    const seen: Record<string, string>[] = [];
+    const fetcher: Fetcher = async (_url, init) => {
+      seen.push(init?.headers ?? {});
+      return { ok: true, status: 200, json: async () => usajobsSearch };
+    };
+    const r = await fetchSearch(fetcher, "usajobs", { USAJOBS_API_KEY: "k", USAJOBS_EMAIL: "me@example.com" });
+    expect(r.ok && r.jobs.length).toBe(2); // the same two jobs come back for every term, kept once
+    expect(seen).toHaveLength(SEARCH_TERMS.length);
+    expect(seen[0]).toMatchObject({ "Authorization-Key": "k", "User-Agent": "me@example.com", Host: "data.usajobs.gov" });
+  });
+});
+
+describe("duplicates", () => {
+  it("treats the same job on two sites as one", () => {
+    expect(looseKey("Gearworks Inc.", "NetSuite Developer")).toBe(looseKey("Gearworks", "NetSuite Developer - Remote, US"));
+    expect(looseKey("Cadence Design Systems", "ERP Analyst (Remote)")).toBe(looseKey("Cadence", "ERP Analyst"));
+    expect(looseKey("Acme", "ERP Analyst [R12345]")).toBe(looseKey("Acme", "ERP Analyst"));
+    expect(looseKey("Acme", "ERP Analyst I")).not.toBe(looseKey("Acme", "ERP Analyst II"));
+    expect(looseKey("Acme", "ERP Analyst")).not.toBe(looseKey("Acme", "ERP Developer"));
+    expect(normUrl("https://www.acme.com/jobs/1/?utm_source=x&gh_src=y")).toBe(normUrl("https://acme.com/jobs/1"));
+  });
+  it("removes second copies already sitting in To review, keeping the one you acted on", async () => {
+    const client = new PGlite();
+    const db = drizzle(client, { schema }) as unknown as NodePgDatabase<typeof schema>;
+    await migrate(db as never, { migrationsFolder: "drizzle" });
+    const add = async (id: string, num: number, company: string, title: string, status: "new" | "saved" | "applied", url?: string) => {
+      await db.insert(schema.postings).values({ id, num, title, company, url, dedupeKey: `${id}|k` });
+      await db.insert(schema.applications).values({ postingId: id, status });
+    };
+    await add("a1", 1, "Acme Inc.", "ERP Analyst", "new");
+    await add("a2", 2, "Acme", "ERP Analyst (Remote)", "applied");
+    await add("b1", 3, "Beta", "SAP Developer", "new", "https://beta.com/jobs/9");
+    await add("b2", 4, "Beta Corp", "SAP ABAP Developer", "saved", "https://www.beta.com/jobs/9?utm_source=li");
+    await add("c1", 5, "Gamma", "Integration Engineer", "new");
+    expect((await hideDuplicates(db, false)).map((d) => d.id).sort()).toEqual(["a1", "b1"]);
+    expect((await db.select().from(schema.postings).where(eq(schema.postings.archived, true))).length).toBe(0); // dry run changes nothing
+    await hideDuplicates(db);
+    const live = (await db.select().from(schema.postings).where(eq(schema.postings.archived, false))).map((p) => p.id).sort();
+    expect(live).toEqual(["a2", "b2", "c1"]);
+    await client.close();
+  });
+});
+
 describe("resume pick", () => {
   it("matches the resume to the kind of job", () => {
     expect(pickResume("SAP MM Analyst").name).toBe("SAP");
@@ -132,6 +197,7 @@ function mockFetcher(): { fetcher: Fetcher; calls: string[]; posts: string[] } {
     "https://api.smartrecruiters.com/v1/companies/BigCo/postings?limit=100&offset=0": smartRecruitersList,
     "https://api.smartrecruiters.com/v1/companies/BigCo/postings/744000001": smartRecruitersJob1,
     "https://apply.workable.com/api/v1/widget/accounts/gearworks?details=true": workableAccount,
+    "https://remotive.com/api/remote-jobs": remotiveList,
   };
   const WD = "https://chipworks.wd5.myworkdayjobs.com/wday/cxs/chipworks/External";
   const fetcher: Fetcher = async (url, init) => {
@@ -140,6 +206,10 @@ function mockFetcher(): { fetcher: Fetcher; calls: string[]; posts: string[] } {
       const b = JSON.parse(init.body ?? "{}");
       posts.push(b.searchText);
       return { ok: true, status: 200, json: async () => workdaySearch(b.searchText, b.offset) };
+    }
+    if (url.startsWith("https://jobicy.com/api/v2/remote-jobs")) {
+      const tag = new URL(url).searchParams.get("tag") ?? "";
+      return { ok: true, status: 200, json: async () => jobicySearch(tag) };
     }
     if (url.startsWith(WD + "/job/")) {
       const d = workdayDetails[url.slice(WD.length)];
@@ -219,6 +289,29 @@ describe("runFeeds", () => {
     expect(by("Integration Developer").applications.resumeName).toBe("Integrations");
     expect(by("NetSuite Administrator").applications.resumeName).toBe("ERP Support");
     expect(by("Integration Developer").applications.resumeUrl).toMatch(/^https:\/\/claude\.ai\/artifact\//);
+    await client.close();
+  });
+
+  it("adds broad search jobs under their own employer, and never the same job twice", async () => {
+    const client = new PGlite();
+    const db = drizzle(client, { schema }) as unknown as NodePgDatabase<typeof schema>;
+    await migrate(db as never, { migrationsFolder: "drizzle" });
+    await db.insert(schema.companies).values([
+      { name: "Gearworks", ats: "workable", board: "gearworks" },
+      { name: "Remotive (remote jobs search)", ats: "remotive", board: "search" },
+      { name: "Jobicy (remote jobs search)", ats: "jobicy", board: "search" },
+    ]);
+    const { fetcher } = mockFetcher();
+    const s = await runFeeds(db, { fetcher, trigger: "script", today: TODAY, concurrency: 1 });
+    expect(s.failed).toBe(0);
+    const titles = s.newJobs.map((j) => `${j.company}: ${j.title}`).sort();
+    // NetSuite Administrator: Workable and Remotive → once. NetSuite Developer: Remotive and Jobicy → once.
+    expect(titles).toEqual(["Gearworks Inc.: NetSuite Developer", "Gearworks: NetSuite Administrator", "Plantline: ERP Integration Developer"]);
+    const plant = (await db.select().from(schema.postings).where(eq(schema.postings.company, "Plantline")))[0];
+    expect(plant).toMatchObject({ source: "Jobicy · Plantline", mode: "remote", tags: ["Broad search"] });
+    const again = await runFeeds(db, { fetcher, trigger: "script", today: TODAY });
+    expect(again.added).toBe(0);
+    expect(again.duplicatesRemoved).toBe(0);
     await client.close();
   });
 });

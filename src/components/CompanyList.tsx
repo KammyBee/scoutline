@@ -3,7 +3,7 @@
 import { useActionState, useMemo, useState, useTransition } from "react";
 import { addCompany, addStarterList, checkCompany, removeCompany, setCompanyActive, type AddState } from "@/app/companies/actions";
 import { boardPublicUrl } from "@/lib/feeds/boards";
-import { ATS_LABEL, type Ats } from "@/lib/feeds/types";
+import { ATS_LABEL, ATS_LIST, type Ats } from "@/lib/feeds/types";
 import type { CompanyRow } from "@/lib/companies";
 import { Toast, useToast } from "./Toast";
 
@@ -96,7 +96,7 @@ export function CompanyList({ companies, missingStarter }: { companies: CompanyR
               <summary>No link? Enter the board name</summary>
               <div className="row">
                 <select name="ats" aria-label="Job board system" defaultValue="greenhouse">
-                  {(Object.keys(ATS_LABEL) as Ats[]).map((a) => <option key={a} value={a}>{ATS_LABEL[a]}</option>)}
+                  {ATS_LIST.map((a) => <option key={a} value={a}>{ATS_LABEL[a]}</option>)}
                 </select>
                 <input name="board" placeholder="board name" aria-label="Board name" />
               </div>

@@ -35,6 +35,7 @@ export function CheckJobsButton({ last, watching }: { last: LastRunInfo; watchin
               setMsg(
                 `Checked ${r.companiesChecked} boards · ${r.added} new job${r.added === 1 ? "" : "s"}` +
                   (r.switchedOff.length ? ` · switched off ${r.switchedOff.length} board${r.switchedOff.length === 1 ? "" : "s"} that don't exist` : r.failed ? ` · ${r.failed} failed` : "") +
+                  (r.duplicatesRemoved ? ` · removed ${r.duplicatesRemoved} duplicate${r.duplicatesRemoved === 1 ? "" : "s"}` : "") +
                   (r.claudeScored ? ` · Claude scored ${r.claudeScored}` : "") +
                   (r.lettersDrafted ? ` · ${r.lettersDrafted} cover letter${r.lettersDrafted === 1 ? "" : "s"} drafted` : "") +
                   (r.claudeNote ? ` · ${/letters/.test(r.claudeNote) ? "cover letters stopped early" : "Claude scoring skipped"}` : ""),
