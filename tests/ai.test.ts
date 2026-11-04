@@ -6,7 +6,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterEach, describe, expect, it } from "vitest";
 import * as schema from "@/db/schema";
 import { AiUnavailable, aiConfigured, askClaude, estimateCost, extractJsonArray, setClaudeForTests, usageThisMonth, type ClaudeLike } from "@/lib/ai/claude";
-import { answerQuestion, scoreWithClaude, writeCoverLetter } from "@/lib/ai/features";
+import { answerQuestion, autoDraftLetters, scoreWithClaude, writeCoverLetter } from "@/lib/ai/features";
 import { computeMatch, prefsFrom, whyFromMatch } from "@/lib/match";
 import { rescoreAll } from "@/lib/rescore";
 import { replyStats } from "@/lib/stats";
@@ -38,6 +38,7 @@ function fakeClaude(reply: (prompt: string) => string) {
 afterEach(() => {
   setClaudeForTests(null);
   delete process.env.CLAUDE_DAILY_LIMIT;
+  delete process.env.AUTO_LETTERS_PER_DAY;
 });
 
 describe("skill match", () => {
@@ -145,6 +146,60 @@ describe("Claude features", () => {
     expect(prompts[0].prompt).toContain("ERP Developer at Co a");
     const [app] = await db.select().from(schema.applications).where(eq(schema.applications.postingId, "a"));
     expect(app.coverLetter).toBe(text);
+  });
+  it("picks a resume while scoring, but never replaces one you chose", async () => {
+    const db = await freshDb();
+    await addJob(db, "a", "ERP Developer", "SAP ABAP");
+    await addJob(db, "b", "ERP Developer", "SAP ABAP");
+    await addJob(db, "c", "ERP Developer", "SAP ABAP");
+    await db.update(schema.applications).set({ resumeName: "App & ERP Dev", resumeUrl: "u", resumePickedBy: "rules" }).where(eq(schema.applications.postingId, "a"));
+    await db.update(schema.applications).set({ resumeName: "Epicor", resumeUrl: "u", resumePickedBy: "you" }).where(eq(schema.applications.postingId, "b"));
+    const { c, prompts } = fakeClaude(() => '[{"ref":"j1","fit":5,"why":"x","resume":"SAP"},{"ref":"j2","fit":5,"why":"x","resume":"SAP"},{"ref":"j3","fit":4,"why":"x","resume":"Not a resume"}]');
+    setClaudeForTests(c);
+    await scoreWithClaude(db, ["a", "b", "c"]);
+    expect(prompts[0].prompt).toContain("- Integrations: Integration/API/EDI");
+    const apps = Object.fromEntries((await db.select().from(schema.applications)).map((a) => [a.postingId, a]));
+    expect(apps.a).toMatchObject({ resumeName: "SAP", resumePickedBy: "claude" });
+    expect(apps.a.resumeUrl).toMatch(/^https:\/\/claude\.ai\/artifact\//);
+    expect(apps.b).toMatchObject({ resumeName: "Epicor", resumePickedBy: "you" });
+    expect(apps.c.resumeName).toBeNull(); // an unknown name is ignored
+  });
+  it("drafts cover letters on its own only for strong new matches, within the daily allowance", async () => {
+    const db = await freshDb();
+    const today = "2026-11-03";
+    const job = async (id: string, fit: number, opts: { scoredBy?: string; found?: string; status?: "new" | "applied"; letter?: string } = {}) => {
+      await addJob(db, id, "ERP Developer", "Epicor", opts.scoredBy ?? "claude", fit);
+      await db.update(schema.postings).set({ found: opts.found ?? today }).where(eq(schema.postings.id, id));
+      await db.update(schema.applications).set({ status: opts.status ?? "new", coverLetter: opts.letter ?? null }).where(eq(schema.applications.postingId, id));
+    };
+    await job("five", 5);
+    await job("four", 4);
+    await job("four-b", 4);
+    await job("three", 3);
+    await job("rules", 5, { scoredBy: "rules" });
+    await job("old", 5, { found: "2026-10-01" });
+    await job("applied", 5, { status: "applied" });
+    await job("has-letter", 5, { letter: "Mine" });
+    const { c, prompts } = fakeClaude(() => "Hello,\n\nLetter.\n\nKamdon Basinger");
+    setClaudeForTests(c);
+    process.env.AUTO_LETTERS_PER_DAY = "2";
+    expect(await autoDraftLetters(db, today)).toEqual({ written: 2, note: null });
+    expect(prompts.every((p) => p.model === "claude-sonnet-5-5")).toBe(true);
+    const apps = Object.fromEntries((await db.select().from(schema.applications)).map((a) => [a.postingId, a]));
+    expect(apps.five).toMatchObject({ coverLetterBy: "claude-auto" });
+    expect(apps.five.coverLetter).toContain("Letter.");
+    expect([apps.four.coverLetter, apps["four-b"].coverLetter].filter(Boolean)).toHaveLength(1);
+    for (const id of ["three", "rules", "old", "applied"]) expect(apps[id].coverLetter).toBeNull();
+    expect(apps["has-letter"].coverLetter).toBe("Mine");
+    // Today's allowance is used up, so a second check writes nothing.
+    expect((await autoDraftLetters(db, today)).written).toBe(0);
+    // Automatic letters always leave room under the daily cap for things you ask for.
+    process.env.AUTO_LETTERS_PER_DAY = "8";
+    process.env.CLAUDE_DAILY_LIMIT = "12";
+    expect((await autoDraftLetters(db, today)).written).toBe(0);
+    process.env.AUTO_LETTERS_PER_DAY = "0";
+    process.env.CLAUDE_DAILY_LIMIT = "60";
+    expect((await autoDraftLetters(db, today)).written).toBe(0);
   });
   it("answers screening questions with saved answers in the prompt", async () => {
     const db = await freshDb();

@@ -5,7 +5,8 @@ import { dedupeKey, slugify } from "../dedupe";
 import { todayIn } from "../dates";
 import { computeMatch, whyFromMatch, type Prefs } from "../match";
 import { loadPrefs } from "../rescore";
-import { fetchBoard, fetchGreenhouseDescription } from "./boards";
+import { pickResume } from "../resumes";
+import { fetchBoard, fetchDescription } from "./boards";
 import { TIER_FIT, judge } from "./rules";
 import { ATS_LABEL, type Ats, type FeedJob, type Fetcher } from "./types";
 
@@ -67,7 +68,7 @@ export async function runFeeds(db: Db, opts: RunOptions): Promise<RunSummary> {
   await pool(list, opts.concurrency ?? 4, async (c) => {
     const ats = c.ats as Ats;
     const board = c.board!;
-    const res = await fetchBoard(fetcher, ats, board);
+    const res = await fetchBoard(fetcher, ats, board, today);
     summary.companiesChecked++;
     const checkedAt = new Date().toISOString();
     if (!res.ok) {
@@ -102,8 +103,9 @@ export async function runFeeds(db: Db, opts: RunOptions): Promise<RunSummary> {
 
     const rows: (typeof postings.$inferInsert)[] = [];
     const fits: { id: string; fit: number; why: string; hits: string[]; gaps: string[] }[] = [];
+    const picks = new Map<string, { name: string; url: string }>();
     for (const { j, v } of fresh) {
-      const description = j.description ?? (ats === "greenhouse" ? await fetchGreenhouseDescription(fetcher, board, j.externalId) : null);
+      const description = j.description ?? (await fetchDescription(fetcher, ats, board, j.externalId));
       let id = slugify(`${c.name}-${j.title}`, 50) + "-" + slugify(j.externalId, 8);
       while (ids.has(id)) id += "x";
       ids.add(id);
@@ -132,6 +134,7 @@ export async function runFeeds(db: Db, opts: RunOptions): Promise<RunSummary> {
       const m = computeMatch(j.title, description, prefs);
       // The title tier keeps a strong ERP title from sinking just because the posting text is short.
       fits.push({ id, fit: Math.max(m.fit, TIER_FIT[v.tier] - 1), why: whyFromMatch(m), hits: m.hits, gaps: m.gaps });
+      picks.set(id, pickResume(j.title, description));
     }
 
     let added: string[] = [];
@@ -140,7 +143,10 @@ export async function runFeeds(db: Db, opts: RunOptions): Promise<RunSummary> {
         const inserted = await tx.insert(postings).values(rows).onConflictDoNothing().returning({ id: postings.id });
         added = inserted.map((r) => r.id);
         if (!added.length) return;
-        await tx.insert(applications).values(added.map((postingId) => ({ postingId, status: "new" as const }))).onConflictDoNothing();
+        await tx
+          .insert(applications)
+          .values(added.map((postingId) => ({ postingId, status: "new" as const, resumeName: picks.get(postingId)?.name, resumeUrl: picks.get(postingId)?.url, resumePickedBy: "rules" })))
+          .onConflictDoNothing();
         await tx.insert(matches).values(fits.filter((f) => added.includes(f.id)).map((f) => ({ postingId: f.id, fit: f.fit, why: f.why, hits: f.hits, gaps: f.gaps, scoredBy: "rules" }))).onConflictDoNothing();
       });
     }
@@ -169,7 +175,7 @@ export async function runFeeds(db: Db, opts: RunOptions): Promise<RunSummary> {
 
 /** Tests one board without saving anything; used when you add a company. */
 export async function testBoard(ats: Ats, board: string, fetcher?: Fetcher, today = todayIn()) {
-  const res = await fetchBoard(fetcher ?? ((url, init) => fetch(url, init)), ats, board);
+  const res = await fetchBoard(fetcher ?? ((url, init) => fetch(url, init)), ats, board, today);
   if (!res.ok) return res;
   const matched = res.jobs.filter((j) => judge(j, today).keep).length;
   return { ok: true as const, total: res.jobs.length, matched };

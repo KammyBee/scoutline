@@ -65,7 +65,7 @@ export async function callsToday(db: Db): Promise<number> {
  */
 export async function askClaude(
   db: Db,
-  opts: { purpose: "score" | "cover_letter" | "answer"; model: string; prompt: string; system?: string; maxTokens: number; postingId?: string },
+  opts: { purpose: "score" | "cover_letter" | "auto_letter" | "answer"; model: string; prompt: string; system?: string; maxTokens: number; postingId?: string },
 ): Promise<string> {
   const c = await client();
   const limit = dailyLimit();

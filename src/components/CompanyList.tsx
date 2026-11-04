@@ -88,7 +88,7 @@ export function CompanyList({ companies, missingStarter }: { companies: CompanyR
       <aside className="aside">
         <div className="panel">
           <h2 className="panel-title">Add a company</h2>
-          <p>Paste a link to the company&apos;s job board or any of its job postings on Greenhouse, Lever or Ashby. It&apos;s checked before it&apos;s added.</p>
+          <p>Paste a link to the company&apos;s job board or any of its job postings on Greenhouse, Lever, Ashby, SmartRecruiters, Workable or Workday. It&apos;s checked before it&apos;s added.</p>
           <form action={action} className="add-form">
             <input name="name" placeholder="Company name" aria-label="Company name" required />
             <input name="link" placeholder="e.g. https://jobs.lever.co/zoox" aria-label="Job board link" />

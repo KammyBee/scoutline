@@ -8,7 +8,7 @@ import { pct, replyStats, type StatLine } from "@/lib/stats";
 
 export const metadata = { title: "Stats · Scoutline" };
 
-const PURPOSE: Record<string, string> = { score: "Scoring new jobs", cover_letter: "Cover letters", answer: "Screening answers" };
+const PURPOSE: Record<string, string> = { score: "Scoring new jobs", cover_letter: "Cover letters", auto_letter: "Cover letters drafted after checks", answer: "Screening answers" };
 const usd = (n: number) => (n < 0.01 && n > 0 ? "under $0.01" : "$" + n.toFixed(2));
 
 function Line({ l }: { l: StatLine }) {

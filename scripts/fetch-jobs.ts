@@ -14,7 +14,8 @@ async function main() {
   const s = await checkAndScore(db, { trigger: "script" });
   console.log(`Checked ${s.companiesChecked} job boards in ${Math.round((Date.now() - t) / 1000)}s: ${s.jobsSeen} open jobs, ${s.jobsMatched} matched your filters, ${s.added} new added to To review.`);
   for (const j of s.newJobs) console.log(`  + ${j.company}: ${j.title}`);
-  if (s.claudeScored) console.log(`Claude scored ${s.claudeScored} of them.`);
+  if (s.claudeScored) console.log(`Claude scored ${s.claudeScored} of them and picked a resume for each.`);
+  if (s.lettersDrafted) console.log(`Claude drafted ${s.lettersDrafted} cover letter(s) for the best matches. Review them before you apply.`);
   if (s.claudeNote) console.log(s.claudeNote);
   if (s.errors.length) {
     console.log(`${s.errors.length} board(s) had problems:`);

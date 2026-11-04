@@ -11,6 +11,7 @@ import { checkAndScore } from "@/lib/feeds/run";
 import { rescoreAll } from "@/lib/rescore";
 import { getJobDetail } from "@/lib/queries";
 import { requireSession } from "@/lib/requireSession";
+import { resumeNamed } from "@/lib/resumes";
 import type { JobDetail } from "@/lib/types";
 
 const { applications, matches, postings, feedback } = schema;
@@ -60,7 +61,20 @@ export async function saveText(id: string, field: keyof typeof TEXT_FIELDS, valu
   await requireSession();
   if (!(field in TEXT_FIELDS)) throw new Error("Unknown field");
   const db = await getDb();
-  await db.update(applications).set({ [field]: String(value).slice(0, 20000), updatedAt: new Date() }).where(eq(applications.postingId, id));
+  await db
+    .update(applications)
+    .set({ [field]: String(value).slice(0, 20000), ...(field === "coverLetter" ? { coverLetterBy: "you" } : {}), updatedAt: new Date() })
+    .where(eq(applications.postingId, id));
+}
+
+/** Your own resume choice for a job; Claude won't change it after this. */
+export async function setResume(id: string, name: string): Promise<void> {
+  await requireSession();
+  const pick = resumeNamed(name);
+  if (!pick) throw new Error("Unknown resume");
+  const db = await getDb();
+  await db.update(applications).set({ resumeName: pick.name, resumeUrl: pick.url, resumePickedBy: "you", updatedAt: new Date() }).where(eq(applications.postingId, id));
+  refresh();
 }
 
 export async function saveDate(id: string, field: keyof typeof DATE_FIELDS, value: string | null): Promise<void> {
@@ -100,14 +114,14 @@ export async function archiveJob(id: string): Promise<void> {
   refresh();
 }
 
-export type CheckResult = { companiesChecked: number; jobsMatched: number; added: number; failed: number; switchedOff: string[]; claudeScored: number; claudeNote: string | null };
+export type CheckResult = { companiesChecked: number; jobsMatched: number; added: number; failed: number; switchedOff: string[]; claudeScored: number; claudeNote: string | null; lettersDrafted: number };
 
 /** "Check for new jobs": reads every watched job board now instead of waiting for the nightly run. */
 export async function checkForJobs(): Promise<CheckResult> {
   await requireSession();
   const s = await checkAndScore(await getDb(), { trigger: "manual" });
   refresh();
-  return { companiesChecked: s.companiesChecked, jobsMatched: s.jobsMatched, added: s.added, failed: s.failed, switchedOff: s.switchedOff, claudeScored: s.claudeScored, claudeNote: s.claudeNote };
+  return { companiesChecked: s.companiesChecked, jobsMatched: s.jobsMatched, added: s.added, failed: s.failed, switchedOff: s.switchedOff, claudeScored: s.claudeScored, claudeNote: s.claudeNote, lettersDrafted: s.lettersDrafted };
 }
 
 /** "More like this": remembers which of your skills this job uses and ranks similar jobs higher. */

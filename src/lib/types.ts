@@ -26,6 +26,8 @@ export type JobRow = {
   actionNeeded: ActionNeeded | null;
   interviewAt: string | null;
   hasPrep: boolean;
+  /** a cover letter is saved for this job */
+  hasLetter: boolean;
   fit: number;
   lastEvent: { kind: string; date: string } | null;
 };
@@ -45,6 +47,10 @@ export type JobDetail = JobRow & {
   coverLetter: string | null;
   resumeName: string | null;
   resumeUrl: string | null;
+  /** rules | claude | you | import (null on older rows) */
+  resumePickedBy: string | null;
+  /** claude-auto | claude | you | import (null on older rows) */
+  coverLetterBy: string | null;
   kitTips: string[];
   interviewEnd: string | null;
   prep: Prep | null;

@@ -2,7 +2,9 @@ import type { Ats } from "./types";
 
 /**
  * Starter watch list: Bay Area and remote-friendly employers that hire business systems, ERP,
- * integration, application and R&D software people and post on Greenhouse, Lever or Ashby.
+ * integration, application and R&D software people and post on Greenhouse, Lever, Ashby,
+ * SmartRecruiters or Workday. Big ERP shops (manufacturers, chipmakers, biotech, energy) mostly use
+ * Workday, so those boards are searched for your kinds of work rather than read in full.
  * Board names were chosen from each company's public job board address. The first check tests
  * every one and switches off any that don't exist, so this list can be trimmed safely.
  */
@@ -51,6 +53,23 @@ export const STARTER_WATCHLIST: { name: string; ats: Ats; board: string; categor
   { name: "Okta", ats: "greenhouse", board: "okta", category: "Business systems teams" },
   { name: "Airtable", ats: "greenhouse", board: "airtable", category: "Business systems teams" },
   { name: "Scale AI", ats: "greenhouse", board: "scaleai", category: "Business systems teams" },
+  // Large employers with SAP / Oracle / ERP teams (Workday boards are stored as "tenant.wdN/site")
+  { name: "NVIDIA", ats: "workday", board: "nvidia.wd5/NVIDIAExternalCareerSite", category: "Large employers with ERP teams" },
+  { name: "Salesforce", ats: "workday", board: "salesforce.wd12/External_Career_Site", category: "Large employers with ERP teams" },
+  { name: "Intel", ats: "workday", board: "intel.wd1/External", category: "Large employers with ERP teams" },
+  { name: "Applied Materials", ats: "workday", board: "amat.wd1/External", category: "Large employers with ERP teams" },
+  { name: "HP", ats: "workday", board: "hp.wd5/ExternalCareerSite", category: "Large employers with ERP teams" },
+  { name: "Adobe", ats: "workday", board: "adobe.wd5/external_experienced", category: "Large employers with ERP teams" },
+  { name: "Workday", ats: "workday", board: "workday.wd5/Workday", category: "Large employers with ERP teams" },
+  { name: "Cadence Design Systems", ats: "workday", board: "cadence.wd1/External_Careers", category: "Large employers with ERP teams" },
+  { name: "Gilead Sciences", ats: "workday", board: "gilead.wd1/gileadcareers", category: "Large employers with ERP teams" },
+  { name: "Illumina", ats: "workday", board: "illumina.wd1/illumina-careers", category: "Large employers with ERP teams" },
+  { name: "Chevron", ats: "workday", board: "chevron.wd5/jobs", category: "Large employers with ERP teams" },
+  { name: "Motorola Solutions", ats: "workday", board: "motorolasolutions.wd5/Careers", category: "Large employers with ERP teams" },
+  { name: "Mastercard", ats: "workday", board: "mastercard.wd1/CorporateCareers", category: "Large employers with ERP teams" },
+  { name: "Visa", ats: "smartrecruiters", board: "Visa", category: "Large employers with ERP teams" },
+  { name: "ServiceNow", ats: "smartrecruiters", board: "ServiceNow", category: "Large employers with ERP teams" },
+  { name: "Bosch", ats: "smartrecruiters", board: "BoschGroup", category: "Large employers with ERP teams" },
   // ERP and NetSuite consultancies
   { name: "Beyond Cloud Consulting", ats: "lever", board: "beyondcloudconsulting", category: "ERP consultancy" },
 ];
