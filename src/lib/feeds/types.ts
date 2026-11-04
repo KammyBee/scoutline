@@ -1,6 +1,11 @@
-export type Ats = "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "workable" | "workday";
+/** Company job boards (one company each) plus broad search sources (many companies, searched by keyword). */
+export type Ats = "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "workable" | "workday" | SearchSource;
+export type SearchSource = "usajobs" | "remotive" | "jobicy";
+/** The job board systems you can add a company from. */
 export const ATS_LIST: Ats[] = ["greenhouse", "lever", "ashby", "smartrecruiters", "workable", "workday"];
-export const ATS_LABEL: Record<Ats, string> = { greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", smartrecruiters: "SmartRecruiters", workable: "Workable", workday: "Workday" };
+export const SEARCH_SOURCES: SearchSource[] = ["usajobs", "remotive", "jobicy"];
+export const isSearchSource = (a: string): a is SearchSource => (SEARCH_SOURCES as string[]).includes(a);
+export const ATS_LABEL: Record<Ats, string> = { greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", smartrecruiters: "SmartRecruiters", workable: "Workable", workday: "Workday", usajobs: "USAJOBS", remotive: "Remotive", jobicy: "Jobicy" };
 
 /** One job as read from a company's public job board, before filtering. */
 export type FeedJob = {
@@ -8,6 +13,8 @@ export type FeedJob = {
   board: string;
   externalId: string;
   title: string;
+  /** the employer, for search sources that list many companies; board jobs use the watched company's name */
+  company?: string;
   location: string;
   /** what the board says about work mode, if anything */
   workplace: "remote" | "hybrid" | "onsite" | null;

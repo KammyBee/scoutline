@@ -114,14 +114,14 @@ export async function archiveJob(id: string): Promise<void> {
   refresh();
 }
 
-export type CheckResult = { companiesChecked: number; jobsMatched: number; added: number; failed: number; switchedOff: string[]; claudeScored: number; claudeNote: string | null; lettersDrafted: number };
+export type CheckResult = { companiesChecked: number; jobsMatched: number; added: number; failed: number; switchedOff: string[]; claudeScored: number; claudeNote: string | null; lettersDrafted: number; duplicatesRemoved: number };
 
 /** "Check for new jobs": reads every watched job board now instead of waiting for the nightly run. */
 export async function checkForJobs(): Promise<CheckResult> {
   await requireSession();
   const s = await checkAndScore(await getDb(), { trigger: "manual" });
   refresh();
-  return { companiesChecked: s.companiesChecked, jobsMatched: s.jobsMatched, added: s.added, failed: s.failed, switchedOff: s.switchedOff, claudeScored: s.claudeScored, claudeNote: s.claudeNote, lettersDrafted: s.lettersDrafted };
+  return { companiesChecked: s.companiesChecked, jobsMatched: s.jobsMatched, added: s.added, failed: s.failed, switchedOff: s.switchedOff, claudeScored: s.claudeScored, claudeNote: s.claudeNote, lettersDrafted: s.lettersDrafted, duplicatesRemoved: s.duplicatesRemoved };
 }
 
 /** "More like this": remembers which of your skills this job uses and ranks similar jobs higher. */

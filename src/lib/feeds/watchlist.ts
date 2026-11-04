@@ -70,6 +70,10 @@ export const STARTER_WATCHLIST: { name: string; ats: Ats; board: string; categor
   { name: "Visa", ats: "smartrecruiters", board: "Visa", category: "Large employers with ERP teams" },
   { name: "ServiceNow", ats: "smartrecruiters", board: "ServiceNow", category: "Large employers with ERP teams" },
   { name: "Bosch", ats: "smartrecruiters", board: "BoschGroup", category: "Large employers with ERP teams" },
+  // Broad search: job sites that list many employers, searched for your kinds of work (terms in feeds/search.ts)
+  { name: "USAJOBS (federal jobs search)", ats: "usajobs", board: "search", category: "Broad search" },
+  { name: "Remotive (remote jobs search)", ats: "remotive", board: "search", category: "Broad search" },
+  { name: "Jobicy (remote jobs search)", ats: "jobicy", board: "search", category: "Broad search" },
   // ERP and NetSuite consultancies
   { name: "Beyond Cloud Consulting", ats: "lever", board: "beyondcloudconsulting", category: "ERP consultancy" },
 ];

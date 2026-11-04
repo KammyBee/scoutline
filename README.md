@@ -51,7 +51,25 @@ Startups mostly use the first three. Bigger employers with SAP, Oracle and other
 2. Press **Check for new jobs** in the header, or run `npm run fetch-jobs`. Online, Vercel runs the same check every morning.
 3. New matches land in **To review** with the posting saved, a fit score, and the source (for example "Greenhouse · Samsara").
 
-What gets added: jobs posted in the last 30 days, remote in the US or in the Bay Area, whose titles fit the work: ERP and business systems roles first (fit 4), then application, integration, BI and .NET roles (fit 3), then general software roles (fit 2). Senior, lead, manager, intern and non-technical roles are skipped. Anything already in your pipeline, or seen before and removed, is never added again (same company and title, same link, or same board posting).
+### Broad search
+
+Besides company boards, three free job sites are searched for your kinds of work (terms in `SEARCH_TERMS`, `src/lib/feeds/search.ts`), so you also see employers you haven't added:
+
+- **USAJOBS**: federal jobs (IT specialist, systems analyst, ERP/SAP roles). Needs a free key: request one at [developer.usajobs.gov](https://developer.usajobs.gov/APIRequest/Index), then add `USAJOBS_API_KEY` and `USAJOBS_EMAIL` (the email you registered with) to `.env.local` and Vercel.
+- **Remotive** and **Jobicy**: remote jobs open to the US. No key needed.
+
+They appear on Watch list under "Broad search" (switch any off there), and their jobs are tagged **Broad search** with the real employer's name, for example "Jobicy · Plantline".
+
+### Duplicates
+
+The same job is never added twice. Before adding anything, Scoutline compares it with every job already in the database, including ones you removed. It counts as the same job when any of these match:
+- the same board posting
+- the same link, ignoring tracking bits like `utm_source`
+- the same company and title, ignoring legal suffixes ("Inc.", "Systems"), location or remote tags ("(Remote)", "- San Jose, CA"), and requisition numbers. Levels like I and II still count as different jobs.
+
+Every check also clears second copies already in To review or Saved. The copy you applied to, or saved, is the one kept. `npm run dedupe` lists any duplicates, and `npm run dedupe -- --apply` removes them.
+
+What gets added: jobs posted in the last 30 days, remote in the US or in the Bay Area, whose titles fit the work: ERP and business systems roles first (fit 4), then application, integration, BI and .NET roles (fit 3), then general software roles (fit 2). Senior, lead, manager, intern and non-technical roles are skipped. Anything already in your pipeline, or seen before and removed, is never added again (see Duplicates above).
 
 The first check tests every board. A board name that doesn't exist is switched off and shown under **Problems**, so you can fix the name or remove it. The filters live in `src/lib/feeds/rules.ts`.
 
@@ -156,6 +174,7 @@ Schema changes later: `npm run db:generate` writes a new migration from `src/db/
 | `npm run db:generate` | Generates a SQL migration from schema changes |
 | `npm run db:migrate` | Applies migrations and refreshes skill matches |
 | `npm run rescore` | Recomputes every job's skill match and your feedback boosts |
+| `npm run dedupe` | Lists duplicate jobs in To review or Saved (`-- --apply` removes them) |
 | `npm test` | Unit and database tests against an in-memory Postgres, with a fake Claude |
 | `npm run typecheck` / `lint` | TypeScript and ESLint |
 
