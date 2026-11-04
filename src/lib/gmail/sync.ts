@@ -28,8 +28,9 @@ export function skipped(address: string, domains = skipDomains()): boolean {
   return domains.some((x) => d === x || d.endsWith("." + x));
 }
 
-export function gmailLink(id: string, account?: string | null): string {
-  return `https://mail.google.com/mail/u/${account ? encodeURIComponent(account) : "0"}/#all/${id}`;
+/** Opens the conversation in Gmail. Gmail's web links take a conversation (thread) id, not a message id. */
+export function gmailLink(threadId: string, account?: string | null): string {
+  return `https://mail.google.com/mail/u/${account ? encodeURIComponent(account) : "0"}/#all/${threadId}`;
 }
 
 async function pool<T>(items: T[], n: number, fn: (item: T, i: number) => Promise<void>) {
@@ -110,7 +111,7 @@ export async function syncGmail(db: Db, opts: { api?: GmailApi; fetcher?: Fetche
         subject,
         kind: c.kind as MailKind,
         summary: clip(redact(summarize(c.kind, company, c.actionText, subject)), 300),
-        link: gmailLink(m.id, account!.email),
+        link: gmailLink(m.threadId, account!.email),
         actionText: c.actionText,
         due: c.due,
         state: link ? "matched" : "unmatched",

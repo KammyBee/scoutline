@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { attachEmail, createFollowUpDraft, disconnectGmail, ignoreEmail, markFollowedUp, snooze, syncNow } from "@/app/inbox/actions";
+import { attachEmail, createFollowUpDraft, disconnectGmail, ignoreEmail, markFollowedUp, removeFiledEmail, snooze, syncNow } from "@/app/inbox/actions";
 import { fmtDate } from "@/lib/dates";
 import { KINDS, kindLabel, safeUrl } from "@/lib/jobView";
 import type { DueRow, GmailStatus, InboxData, JobOption, MailRow } from "@/lib/inbox";
@@ -55,17 +55,7 @@ export function InboxView({ data, connected, error }: { data: InboxData; connect
         <h2 className="panel-title">Recent job email</h2>
         {recent.length ? (
           <ul className="inbox-list">
-            {recent.map((m) => (
-              <li key={m.id} className="mail-row">
-                <span className="when">{fmtDate(m.date)}</span>
-                <span className={"kind k-" + (m.kind && m.kind in KINDS ? m.kind : "update")}>{kindLabel(m.kind ?? "update")}</span>
-                <span className="mail-what">
-                  <b>{m.company}</b> · {m.title}
-                  <span className="meta-row"> {m.summary}</span>
-                </span>
-                {safeUrl(m.link) ? <a className="gm-link" href={safeUrl(m.link)!} target="_blank" rel="noopener noreferrer">Open in Gmail ↗</a> : null}
-              </li>
-            ))}
+            {recent.map((m) => <RecentItem key={m.id} m={m} toast={toast.show} />)}
           </ul>
         ) : (
           <p className="meta-row">{gmail.canRead ? "No job email filed yet. Press Sync now to read the last few weeks." : "Connect Gmail to see job email here."}</p>
@@ -172,6 +162,29 @@ function DueItem({ d, canDraft, toast }: { d: DueRow; canDraft: boolean; toast: 
           {err ? <p className="ai-err" role="alert">{err}</p> : null}
         </div>
       ) : null}
+    </li>
+  );
+}
+
+function RecentItem({ m, toast }: { m: MailRow; toast: (m: string) => void }) {
+  const [pending, start] = useTransition();
+  const [sure, setSure] = useState(false);
+  const remove = () => {
+    if (!sure) { setSure(true); setTimeout(() => setSure(false), 3500); return; }
+    start(async () => { try { await removeFiledEmail(m.id); toast("Removed from that job's history. Fix the status in the job if it changed."); } catch { toast("That didn't save. Try again in a moment."); } });
+  };
+  return (
+    <li className="mail-row">
+      <span className="when">{fmtDate(m.date)}</span>
+      <span className={"kind k-" + (m.kind && m.kind in KINDS ? m.kind : "update")}>{kindLabel(m.kind ?? "update")}</span>
+      <span className="mail-what">
+        <b>{m.company}</b> · {m.title}
+        <span className="meta-row"> {m.summary}{m.subject && !m.summary?.includes(m.subject) ? ` · "${m.subject}"` : ""}</span>
+      </span>
+      <span className="row-btns">
+        {safeUrl(m.link) ? <a className="gm-link" href={safeUrl(m.link)!} target="_blank" rel="noopener noreferrer">Open in Gmail ↗</a> : null}
+        <button type="button" className="btn quiet" disabled={pending} title="Filed wrong? Take it off this job's history" onClick={remove}>{sure ? "Click again to remove" : "Wrong?"}</button>
+      </span>
     </li>
   );
 }

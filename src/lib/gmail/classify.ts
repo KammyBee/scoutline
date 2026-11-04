@@ -17,17 +17,22 @@ const ALERT_SENDER = /(jobalerts?|job-alerts?|alerts?|digest|newsletter|marketin
 const ALERT_TEXT = /\b(job alert|jobs? (you may|you might|for you|picked for you|recommended)|new jobs? (matching|for|near)|recommended jobs|people are hiring|unsubscribe from (these|job) alerts?|similar jobs)\b/i;
 
 const RX = {
-  offer: /\b(offer letter|pleased to (extend|offer)|extend (you )?an? (formal |verbal )?offer|offer of employment|your offer (details|package)|we('d| would) like to offer you)\b/i,
+  // Only wording aimed at you about this job. Not "pleased to offer you an interview", benefits blurbs
+  // ("we offer great benefits"), or confirmation boilerplate ("any offer of employment is contingent on…").
+  offer:
+    /\b((pleased|happy|excited|delighted|thrilled) to (extend|offer) you (an? |the |a formal |a written |a verbal )?(offer|position|role|job)\b|(pleased|happy|excited|delighted|thrilled) to (extend|make) (you )?an? (formal |verbal |written |official )?(job |employment )?offer|extend(ing)? (to )?you an? (formal |verbal |written |official )?(job |employment )?offer|(attached|enclosed) (is |please find )?your (formal |written |official )?offer|your offer (letter|details|package) (is|are|has|have)|we('d| would) like to offer you the (position|role|job))/i,
   rejection:
     /\b(unfortunately|not (to )?(be )?mov(e|ing) forward|decided (not to|to (move|go|proceed|pursue) (forward )?with (other|another|a different))|other candidates|another candidate|no longer (being )?consider|not (been )?selected|position has been filled|filled the (position|role)|will not be (proceeding|moving)|regret to inform|not a (fit|match) at this time|decided to pursue other)\b/i,
   interview:
     /\b(schedul(e|ing) (an?|your|a time for)? ?(interview|phone screen|call|chat|conversation|meeting)|interview (invitation|request|confirmation|scheduled|availability)|invite you to (an? )?(interview|call|chat)|phone screen|next round|your availability|times that work|book a time|onsite interview|virtual interview|video interview|meet with (our|the) (team|hiring manager))\b/i,
   action:
-    /\b(assessment|coding (challenge|exercise|test)|take[- ]home|hackerrank|codesignal|codility|questionnaire|complete (the|your|this|a) (form|application|survey|profile|test|task)|please (provide|submit|complete|confirm|upload)|action required|background check|references? (request|check)|e-?sign|sign (the|your) (document|offer))\b/i,
+    /\b(assessment|coding (challenge|exercise|test)|take[- ]home|hackerrank|codesignal|codility|questionnaire|complete (the|your|this|a) (form|application|survey|profile|test|task)|please (provide|submit|complete|confirm|upload)|action required|(complete|start|authorize|consent to|submit) (your |the |a )?background check|background check (form|authorization|invitation|request)|references? (request|check)|e-?sign|sign (the|your) (document|offer))\b/i,
   applied:
     /\b(thank(s| you) for (applying|your application|submitting|your interest in)|application (has been )?(received|submitted|confirmation|complete)|we('ve| have) received your (application|resume)|successfully (applied|submitted)|your application (to|for) .{0,80} (was|has been) (received|submitted))\b/i,
   recruiter:
     /\b(recruit(er|ing)|talent (acquisition|partner)|sourcer|came across your (profile|resume|background)|(open|new) (role|position|opportunity)|would you be (open|interested)|are you (open|interested) (to|in)|reach(ing)? out about)\b/i,
+  /** subject lines that announce an offer */
+  offerSubject: /\b(offer letter|job offer|employment offer|offer of employment|your offer|offer from)\b/i,
   job: /\b(application|applied|applying|candidate|candidacy|position|role|opportunit|interview|recruit|hiring|resume|job)\b/i,
 };
 
@@ -70,7 +75,7 @@ export function classify(m: MailIn): Classified {
   if (/^(updated )?invitation:/i.test(m.subject) && RX.job.test(head + " interview")) {
     if (/interview|screen|call|chat/i.test(m.subject)) return { kind: "interview", actionText: "Interview invitation: check the time and accept it", due: null };
   }
-  if (RX.offer.test(head)) return { kind: "offer", actionText: "Review the offer", due: dueFrom(head, m.date) };
+  if (RX.offer.test(head) || (RX.offerSubject.test(m.subject) && !/interview/i.test(m.subject))) return { kind: "offer", actionText: "Review the offer", due: dueFrom(head, m.date) };
   if (RX.rejection.test(head) && RX.job.test(head)) return { kind: "rejection", actionText: null, due: null };
   if (RX.interview.test(head)) return { kind: "interview", actionText: "Reply with your availability", due: dueFrom(head, m.date) };
   if (RX.action.test(head) && (RX.job.test(head) || viaAts(m.fromAddress))) {

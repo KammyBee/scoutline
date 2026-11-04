@@ -54,6 +54,15 @@ export async function ignoreEmail(emailId: string): Promise<void> {
   refresh();
 }
 
+/** Takes a wrongly filed email off its job's history (for example a confirmation read as an offer). Doesn't change the job's status. */
+export async function removeFiledEmail(emailId: string): Promise<void> {
+  await requireSession();
+  const db = await getDb();
+  await db.delete(schema.events).where(eq(schema.events.emailId, String(emailId)));
+  await db.update(emails).set({ state: "ignored", postingId: null }).where(eq(emails.id, String(emailId)));
+  refresh();
+}
+
 export async function markFollowedUp(postingId: string): Promise<void> {
   await requireSession();
   await recordFollowUp(await getDb(), String(postingId));

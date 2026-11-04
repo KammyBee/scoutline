@@ -134,6 +134,15 @@ describe("classifying job email", () => {
     expect(classify(m("Your offer from Acme", "We are pleased to extend an offer of employment."))?.kind).toBe("offer");
     expect(classify(m("Quick question", "Hi Kam, I'm a recruiter at Initech and came across your profile. Would you be open to a new role?", "Pat Lee <pat@initech.com>"))?.kind).toBe("recruiter");
   });
+  it("doesn't mistake interview invites, benefits text or boilerplate for an offer", () => {
+    expect(classify(m("Thank you for applying to Acme", "We have received your application. Any offer of employment is contingent on a background check."))?.kind).toBe("applied");
+    expect(classify(m("Next steps", "We are pleased to offer you an interview for the ERP Developer role. Please share your availability."))?.kind).toBe("interview");
+    expect(classify(m("Application received", "Thanks for applying! We're pleased to offer competitive benefits and flexible work, and we offer a 401k."))?.kind).toBe("applied");
+    expect(classify(m("Your application", "If you are extended an offer, the offer letter will include details. Unfortunately we are moving forward with other candidates."))?.kind).toBe("rejection");
+    expect(classify(m("Good news", "We're delighted to offer you the position of ERP Developer."))?.kind).toBe("offer");
+    expect(classify(m("Offer letter: ERP Developer", "Please review and sign."))?.kind).toBe("offer");
+    expect(classify(m("Update", "We would like to extend you a formal offer."))?.kind).toBe("offer");
+  });
   it("ignores alerts, newsletters, personal mail and sent mail", () => {
     expect(classify(m("30 new jobs for ERP Developer", "Jobs you may be interested in", "LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>"))).toBeNull();
     expect(classify(m("Dinner Saturday?", "Want to get tacos?", "Friend <friend@gmail.com>"))).toBeNull();
@@ -290,7 +299,8 @@ describe("Gmail sync", () => {
     expect(m7.postingId).toBe("globex-sap"); // same thread as the interview email
     const m4 = saved.find((e) => e.id === "m4")!;
     expect(m4).toMatchObject({ state: "unmatched", kind: "recruiter", postingId: null });
-    expect(m4.link).toBe("https://mail.google.com/mail/u/me%40example.com/#all/m4");
+    expect(m4.link).toBe("https://mail.google.com/mail/u/me%40example.com/#all/t-m4");
+    expect(m7.link).toBe("https://mail.google.com/mail/u/me%40example.com/#all/t-m2"); // the conversation, not the reply
 
     const evs = await db.select().from(schema.events).where(eq(schema.events.postingId, "acme-erp"));
     expect(evs.map((e) => e.kind).sort()).toEqual(["applied", "offer"]);
@@ -329,6 +339,22 @@ describe("Gmail sync", () => {
     expect(second.rateLimited).toBe(false);
     const saved = (await db.select().from(schema.emails)).map((e) => e.id).sort();
     expect(saved).toEqual(["m1", "m2", "m3", "m4", "m7", "m8"]);
+  });
+
+  it("the link fix-up migration points old message links at their conversation", async () => {
+    const db = drizzle(new PGlite(), { schema }) as unknown as Db;
+    await migrate(db as never, { migrationsFolder: "drizzle" });
+    const old = "https://mail.google.com/mail/u/me%40example.com/#all/m9";
+    await db.insert(schema.postings).values({ id: "p1", title: "T", company: "C", dedupeKey: "c|t" });
+    await db.insert(schema.applications).values({ postingId: "p1", status: "interviewing", actionNeeded: { text: "Reply", link: old, done: false } });
+    await db.insert(schema.emails).values({ id: "m9", threadId: "t9", postingId: "p1", link: old, state: "matched" });
+    await db.insert(schema.events).values({ postingId: "p1", date: "2026-11-01", kind: "interview", link: old, emailId: "m9" });
+    const sql = (await import("node:fs")).readFileSync("drizzle/0004_gmail_thread_links.sql", "utf8");
+    for (const stmt of sql.split("--> statement-breakpoint")) await db.execute(stmt);
+    const fixed = "https://mail.google.com/mail/u/me%40example.com/#all/t9";
+    expect((await db.select().from(schema.emails))[0].link).toBe(fixed);
+    expect((await db.select().from(schema.events))[0].link).toBe(fixed);
+    expect((await db.select().from(schema.applications))[0].actionNeeded?.link).toBe(fixed);
   });
 
   it("marks the account for reconnect when Google revokes access", async () => {
