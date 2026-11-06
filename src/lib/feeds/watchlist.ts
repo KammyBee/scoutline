@@ -3,12 +3,61 @@ import type { Ats } from "./types";
 /**
  * Starter watch list: Bay Area and remote-friendly employers that hire business systems, ERP,
  * integration, application and R&D software people and post on Greenhouse, Lever, Ashby,
- * SmartRecruiters or Workday. Big ERP shops (manufacturers, chipmakers, biotech, energy) mostly use
+ * SmartRecruiters, Workable or Workday. Big ERP shops (manufacturers, chipmakers, biotech, energy) mostly use
  * Workday, so those boards are searched for your kinds of work rather than read in full.
  * Board names were chosen from each company's public job board address. The first check tests
  * every one and switches off any that don't exist, so this list can be trimmed safely.
  */
-export const STARTER_WATCHLIST: { name: string; ats: Ats; board: string; category: string }[] = [
+export type StarterCompany = { name: string; ats: Ats; board: string; category: string };
+
+/**
+ * Smaller and mid-size companies (added Nov 6 2026): Bay Area or remote-friendly manufacturers and
+ * hardware makers that run an ERP, plus software companies that build ERP, inventory, manufacturing,
+ * integration, procurement and accounting tools. Every board below was checked live on Nov 6 2026.
+ * These can be added on their own from the Watch list page, so companies you removed earlier stay removed.
+ */
+export const SMALLER_COMPANIES: StarterCompany[] = [
+  // Smaller manufacturers and hardware makers
+  { name: "Fictiv", ats: "greenhouse", board: "fictiv", category: "Smaller manufacturers" },
+  { name: "Bright Machines", ats: "lever", board: "brightmachines", category: "Smaller manufacturers" },
+  { name: "Dexterity", ats: "lever", board: "dexterity", category: "Smaller manufacturers" },
+  { name: "Mainspring Energy", ats: "lever", board: "mainspringenergy", category: "Smaller manufacturers" },
+  { name: "Form Energy", ats: "ashby", board: "formenergy", category: "Smaller manufacturers" },
+  { name: "SPAN", ats: "ashby", board: "span", category: "Smaller manufacturers" },
+  { name: "Redwood Materials", ats: "greenhouse", board: "redwoodmaterials", category: "Smaller manufacturers" },
+  { name: "Skydio", ats: "ashby", board: "skydio", category: "Smaller manufacturers" },
+  { name: "Lightmatter", ats: "greenhouse", board: "lightmatter", category: "Smaller manufacturers" },
+  { name: "PsiQuantum", ats: "greenhouse", board: "psiquantum", category: "Smaller manufacturers" },
+  { name: "Tenstorrent", ats: "greenhouse", board: "tenstorrent", category: "Smaller manufacturers" },
+  { name: "Outset Medical", ats: "greenhouse", board: "outsetmedical", category: "Smaller manufacturers" },
+  { name: "Twist Bioscience", ats: "greenhouse", board: "twistbioscience", category: "Smaller manufacturers" },
+  { name: "Oura", ats: "greenhouse", board: "oura", category: "Smaller manufacturers" },
+  // Manufacturing, inventory and ERP software
+  { name: "Fulcrum", ats: "lever", board: "fulcrumpro", category: "Manufacturing and ERP software" },
+  { name: "Cin7", ats: "lever", board: "cin7", category: "Manufacturing and ERP software" },
+  { name: "Doss", ats: "ashby", board: "doss", category: "Manufacturing and ERP software" },
+  { name: "Rillet", ats: "ashby", board: "rillet", category: "Manufacturing and ERP software" },
+  { name: "Campfire", ats: "ashby", board: "campfire", category: "Manufacturing and ERP software" },
+  { name: "Tulip Interfaces", ats: "greenhouse", board: "tulip", category: "Manufacturing and ERP software" },
+  { name: "Paperless Parts", ats: "greenhouse", board: "paperlessparts", category: "Manufacturing and ERP software" },
+  { name: "First Resonance", ats: "ashby", board: "first-resonance", category: "Manufacturing and ERP software" },
+  { name: "Seeq", ats: "workable", board: "seeq", category: "Manufacturing and ERP software" },
+  { name: "Xometry", ats: "greenhouse", board: "xometry", category: "Manufacturing and ERP software" },
+  // Integration, data and finance / procurement software
+  { name: "Celigo", ats: "greenhouse", board: "celigo", category: "Integration and finance software" },
+  { name: "Workato", ats: "greenhouse", board: "workato", category: "Integration and finance software" },
+  { name: "Merge", ats: "ashby", board: "merge", category: "Integration and finance software" },
+  { name: "Omni Analytics", ats: "ashby", board: "omni", category: "Integration and finance software" },
+  { name: "Numeric", ats: "ashby", board: "numeric", category: "Integration and finance software" },
+  { name: "Mercury", ats: "greenhouse", board: "mercury", category: "Integration and finance software" },
+  { name: "Zip", ats: "ashby", board: "zip", category: "Integration and finance software" },
+  { name: "Levelpath", ats: "ashby", board: "levelpath", category: "Integration and finance software" },
+  { name: "Procurify", ats: "ashby", board: "procurify", category: "Integration and finance software" },
+  { name: "Fairmarkit", ats: "greenhouse", board: "fairmarkit", category: "Integration and finance software" },
+  { name: "Didero", ats: "ashby", board: "didero", category: "Integration and finance software" },
+];
+
+export const STARTER_WATCHLIST: StarterCompany[] = [
   // Hardware, manufacturing and R&D
   { name: "Samsara", ats: "greenhouse", board: "samsara", category: "Hardware / IoT" },
   { name: "Verkada", ats: "greenhouse", board: "verkada", category: "Hardware / IoT" },
@@ -76,4 +125,6 @@ export const STARTER_WATCHLIST: { name: string; ats: Ats; board: string; categor
   { name: "Jobicy (remote jobs search)", ats: "jobicy", board: "search", category: "Broad search" },
   // ERP and NetSuite consultancies
   { name: "Beyond Cloud Consulting", ats: "lever", board: "beyondcloudconsulting", category: "ERP consultancy" },
+  // Smaller and mid-size companies (see above)
+  ...SMALLER_COMPANIES,
 ];

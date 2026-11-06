@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { refresh } from "next/cache";
 import { getDb, schema } from "@/db/client";
 import { seedStarterList } from "@/lib/companies";
+import { SMALLER_COMPANIES } from "@/lib/feeds/watchlist";
 import { parseBoardUrl, workdayParts } from "@/lib/feeds/boards";
 import { testBoard } from "@/lib/feeds/ingest";
 import { checkAndScore } from "@/lib/feeds/run";
@@ -15,6 +16,14 @@ const { companies } = schema;
 export async function addStarterList(): Promise<number> {
   await requireSession();
   const n = await seedStarterList(await getDb());
+  refresh();
+  return n;
+}
+
+/** Adds only the smaller and mid-size companies, so starter companies you removed stay removed. */
+export async function addSmallerCompanies(): Promise<number> {
+  await requireSession();
+  const n = await seedStarterList(await getDb(), SMALLER_COMPANIES);
   refresh();
   return n;
 }
