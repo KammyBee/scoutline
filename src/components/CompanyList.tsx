@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useMemo, useState, useTransition } from "react";
-import { addCompany, addStarterList, checkCompany, removeCompany, setCompanyActive, type AddState } from "@/app/companies/actions";
+import { addCompany, addSmallerCompanies, addStarterList, checkCompany, removeCompany, setCompanyActive, type AddState } from "@/app/companies/actions";
 import { boardPublicUrl } from "@/lib/feeds/boards";
 import { ATS_LABEL, ATS_LIST, type Ats } from "@/lib/feeds/types";
 import type { CompanyRow } from "@/lib/companies";
@@ -13,7 +13,7 @@ function when(iso: string | null) {
   return isNaN(+d) ? "" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + ", " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-export function CompanyList({ companies, missingStarter }: { companies: CompanyRow[]; missingStarter: number }) {
+export function CompanyList({ companies, missingStarter, missingSmaller }: { companies: CompanyRow[]; missingStarter: number; missingSmaller: number }) {
   const [state, action, adding] = useActionState<AddState, FormData>(addCompany, {});
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<number | null>(null);
@@ -106,10 +106,17 @@ export function CompanyList({ companies, missingStarter }: { companies: CompanyR
             <button className="btn primary" type="submit" disabled={adding}>{adding ? "Checking the board…" : "Add to watch list"}</button>
           </form>
         </div>
-        {companies.length > 0 && missingStarter > 0 ? (
+        {companies.length > 0 && missingSmaller > 0 ? (
+          <div className="panel">
+            <h2 className="panel-title">Smaller companies</h2>
+            <p>{missingSmaller} smaller and mid-size companies aren&apos;t on your watch list yet: Bay Area and remote-friendly manufacturers, plus companies that make ERP, manufacturing, integration and procurement software.</p>
+            <button type="button" className="btn" disabled={pending} onClick={() => run(null, async () => { const n = await addSmallerCompanies(); toast.show(`Added ${n} companies. Press "Check for new jobs" to bring in their openings.`); })}>Add them</button>
+          </div>
+        ) : null}
+        {companies.length > 0 && missingStarter > missingSmaller ? (
           <div className="panel">
             <h2 className="panel-title">Starter list</h2>
-            <p>{missingStarter} companies from the starter list aren&apos;t on your watch list.</p>
+            <p>{missingStarter - missingSmaller} other companies from the starter list aren&apos;t on your watch list.</p>
             <button type="button" className="btn" disabled={pending} onClick={() => run(null, async () => { const n = await addStarterList(); toast.show(`Added ${n} companies.`); })}>Add them</button>
           </div>
         ) : null}
