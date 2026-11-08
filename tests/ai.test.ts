@@ -10,6 +10,7 @@ import { answerQuestion, autoDraftLetters, scoreWithClaude, writeCoverLetter } f
 import { computeMatch, prefsFrom, whyFromMatch } from "@/lib/match";
 import { rescoreAll } from "@/lib/rescore";
 import { replyStats } from "@/lib/stats";
+import { addDays, todayIn } from "@/lib/dates";
 
 type Db = NodePgDatabase<typeof schema>;
 async function freshDb(): Promise<Db> {
@@ -114,6 +115,26 @@ describe("Claude calls", () => {
     const [row] = await db.select().from(schema.aiCalls);
     expect(row).toMatchObject({ ok: false, error: "overloaded", purpose: "score" });
   });
+  it("never saves a cover letter that Claude stopped partway through", async () => {
+    const db = await freshDb();
+    await addJob(db, "a", "ERP Developer", "Epicor and SQL");
+    let maxTokens = 0;
+    setClaudeForTests({
+      messages: {
+        create: async (p) => {
+          maxTokens = p.max_tokens;
+          return { content: [{ type: "text", text: "Hello,\n\nI'm applying for the ERP Developer role because" }], stop_reason: "max_tokens", usage: { input_tokens: 2000, output_tokens: p.max_tokens } };
+        },
+      },
+    });
+    await expect(writeCoverLetter(db, "a")).rejects.toThrow(/ran out of room/);
+    expect(maxTokens).toBeGreaterThanOrEqual(8000);
+    const [app] = await db.select().from(schema.applications).where(eq(schema.applications.postingId, "a"));
+    expect(app.coverLetter).toBeNull();
+    const [row] = await db.select().from(schema.aiCalls);
+    expect(row).toMatchObject({ ok: false, purpose: "cover_letter", outputTokens: maxTokens });
+    expect(row.costUsd).toBeGreaterThan(0);
+  });
 });
 
 describe("Claude features", () => {
@@ -166,7 +187,7 @@ describe("Claude features", () => {
   });
   it("drafts cover letters on its own only for strong new matches, within the daily allowance", async () => {
     const db = await freshDb();
-    const today = "2026-11-03";
+    const today = todayIn(); // askClaude logs calls under the real date, so the test has to use it too
     const job = async (id: string, fit: number, opts: { scoredBy?: string; found?: string; status?: "new" | "applied"; letter?: string } = {}) => {
       await addJob(db, id, "ERP Developer", "Epicor", opts.scoredBy ?? "claude", fit);
       await db.update(schema.postings).set({ found: opts.found ?? today }).where(eq(schema.postings.id, id));
@@ -177,7 +198,7 @@ describe("Claude features", () => {
     await job("four-b", 4);
     await job("three", 3);
     await job("rules", 5, { scoredBy: "rules" });
-    await job("old", 5, { found: "2026-10-01" });
+    await job("old", 5, { found: addDays(today, -30) });
     await job("applied", 5, { status: "applied" });
     await job("has-letter", 5, { letter: "Mine" });
     const { c, prompts } = fakeClaude(() => "Hello,\n\nLetter.\n\nKamdon Basinger");

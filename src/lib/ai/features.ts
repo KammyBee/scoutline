@@ -4,7 +4,7 @@ import * as schema from "@/db/schema";
 import { addDays, todayIn } from "../dates";
 import { CANDIDATE_NAME, TARGETS, factsText } from "../profile";
 import { resumeMenu, resumeNamed } from "../resumes";
-import { SCORE_MODEL, WRITE_MODEL, askClaude, callsToday, dailyLimit, extractJsonArray } from "./claude";
+import { MAX_TOKENS, SCORE_MODEL, WRITE_MODEL, askClaude, callsToday, dailyLimit, extractJsonArray } from "./claude";
 
 type Db = NodePgDatabase<typeof schema>;
 const { postings, matches, applications, settings } = schema;
@@ -46,7 +46,7 @@ export async function scoreWithClaude(db: Db, postingIds: string[]): Promise<num
       `Also pick which of his resumes fits each job best, by its exact name:\n${resumeMenu()}\n\n` +
       'Reply with only a JSON array like [{"ref":"j1","fit":4,"why":"...","resume":"ERP Analyst"}], one entry per job.\n\nJobs:\n' +
       JSON.stringify(jobs);
-    const text = await askClaude(db, { purpose: "score", model: SCORE_MODEL(), prompt, maxTokens: 1800 });
+    const text = await askClaude(db, { purpose: "score", model: SCORE_MODEL(), prompt, maxTokens: MAX_TOKENS.score });
     const out = extractJsonArray(text) as { ref?: unknown; fit?: unknown; why?: unknown; resume?: unknown }[];
     for (const o of out) {
       const idx = jobs.findIndex((j) => j.ref === String(o.ref));
@@ -100,7 +100,7 @@ export async function writeCoverLetter(db: Db, id: string, auto = false): Promis
     "Mention he's based in San Francisco when location matters; for roles outside the Bay Area say he's open to remote work or occasional travel. Don't mention his current employer. " +
     STYLE +
     "\n\nReply with only the letter text.";
-  const text = await askClaude(db, { purpose: auto ? "auto_letter" : "cover_letter", model: WRITE_MODEL(), prompt, maxTokens: 1200, postingId: id });
+  const text = await askClaude(db, { purpose: auto ? "auto_letter" : "cover_letter", model: WRITE_MODEL(), prompt, maxTokens: MAX_TOKENS.writing, postingId: id });
   await db.update(applications).set({ coverLetter: text, coverLetterBy: auto ? "claude-auto" : "claude", updatedAt: new Date() }).where(eq(applications.postingId, id));
   return text;
 }
@@ -156,7 +156,7 @@ export async function answerQuestion(db: Db, id: string, question: string): Prom
     (saved ? `His own standard answers:\n${saved}\n\n` : "") +
     "Write in first person, plain and specific, usually 2-5 sentences unless the question asks for a number or yes/no. If the question needs a fact not given here (a number, a date, a preference), put a short [bracketed placeholder] instead of guessing. " +
     'No em dashes, no "passionate" or "leverage". Reply with only the answer.';
-  return askClaude(db, { purpose: "answer", model: WRITE_MODEL(), prompt, maxTokens: 600, postingId: id });
+  return askClaude(db, { purpose: "answer", model: WRITE_MODEL(), prompt, maxTokens: MAX_TOKENS.writing, postingId: id });
 }
 
 /** Jobs added by a check that are still rule-scored, newest first. */
