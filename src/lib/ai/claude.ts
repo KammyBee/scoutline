@@ -33,8 +33,11 @@ export class AiUnavailable extends Error {
   }
 }
 
+/** Claude stopped before finishing (hit the token cap or declined); already logged. */
+export class AiCutOff extends Error {}
+
 type CreateParams = { model: string; max_tokens: number; system?: string; messages: { role: "user" | "assistant"; content: string }[] };
-type CreateResult = { content: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number } };
+type CreateResult = { content: { type: string; text?: string }[]; stop_reason?: string | null; usage?: { input_tokens?: number; output_tokens?: number } };
 export type ClaudeLike = { messages: { create: (p: CreateParams) => Promise<CreateResult> } };
 
 let override: ClaudeLike | null = null;
@@ -60,6 +63,13 @@ export async function callsToday(db: Db): Promise<number> {
 }
 
 /**
+ * Room for each answer, in tokens. The current Sonnet and Haiku models think before they answer, and that
+ * thinking counts toward this cap, so a tight cap (it used to be 1200 for letters) can run out mid-letter.
+ * These are ceilings, not targets: you're billed only for what Claude actually writes.
+ */
+export const MAX_TOKENS = { score: 16000, writing: 16000 } as const;
+
+/**
  * Sends one prompt to Claude and logs it. Refuses once today's call count reaches CLAUDE_DAILY_LIMIT
  * (default 60), so a bug or a busy day can't run up a bill.
  */
@@ -81,12 +91,21 @@ export async function askClaude(
     const text = res.content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("").trim();
     const input = res.usage?.input_tokens ?? 0;
     const output = res.usage?.output_tokens ?? 0;
-    await db.insert(schema.aiCalls).values({ day, purpose: opts.purpose, model: opts.model, postingId: opts.postingId, inputTokens: input, outputTokens: output, costUsd: estimateCost(opts.model, input, output) });
+    const cost = estimateCost(opts.model, input, output);
+    // A reply that stopped early is never handed back as if it were complete.
+    const cutOff =
+      res.stop_reason === "max_tokens" ? `Claude ran out of room (${output} tokens) before finishing, so the partial answer was thrown away. Try again.` :
+      res.stop_reason === "refusal" ? "Claude declined to write this one." : null;
+    if (cutOff) {
+      await db.insert(schema.aiCalls).values({ day, purpose: opts.purpose, model: opts.model, postingId: opts.postingId, inputTokens: input, outputTokens: output, costUsd: cost, ok: false, error: cutOff });
+      throw new AiCutOff(cutOff);
+    }
+    await db.insert(schema.aiCalls).values({ day, purpose: opts.purpose, model: opts.model, postingId: opts.postingId, inputTokens: input, outputTokens: output, costUsd: cost });
     if (!text) throw new Error("Claude returned an empty answer");
     return text;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    if (!(e instanceof AiUnavailable)) {
+    if (!(e instanceof AiUnavailable) && !(e instanceof AiCutOff)) {
       await db.insert(schema.aiCalls).values({ day, purpose: opts.purpose, model: opts.model, postingId: opts.postingId, ok: false, error: msg.slice(0, 500) });
     }
     throw e;
