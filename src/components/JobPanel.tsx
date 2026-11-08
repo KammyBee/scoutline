@@ -7,6 +7,7 @@ import { RESUMES } from "@/lib/resumes";
 import { KINDS, PASS_REASONS, answersText, cap, kindLabel, openAction, payText, safeUrl, statusLabel } from "@/lib/jobView";
 import type { JobDetail, Status } from "@/lib/types";
 import { FitBars } from "./FitBars";
+import { stockPhrasesIn } from "@/lib/ai/style";
 
 type Tab = "overview" | "apply" | "prep" | "posting";
 
@@ -257,6 +258,7 @@ function Apply({ j, answers, copy, run, aiReady }: { j: JobDetail; answers: Reco
         {j.coverLetterBy === "claude-auto" && letter === (j.coverLetter ?? "") ? <span className="meta-row">Claude drafted this after the last check because it scored the job {j.fit}/5. Read it through before you use it.</span> : null}
         <textarea className="cl" id={"cl-" + j.id} value={letter} placeholder="No cover letter yet for this job." onChange={(e) => setLetter(e.target.value)}
           onBlur={() => { if (letter !== (j.coverLetter ?? "")) run(() => saveText(j.id, "coverLetter", letter), "Cover letter saved"); }} />
+        {stockPhrasesIn(letter).length ? <span className="meta-row">Sounds stock: {stockPhrasesIn(letter).map((p) => `"${p}"`).join(", ")}. Reword these in your own words.</span> : null}
         <div className="detail-actions">
           <button type="button" className="btn primary" onClick={() => copy(letter, "Cover letter copied")}>Copy cover letter</button>
           {aiReady ? <button type="button" className="btn" disabled={writing} onClick={write}>{writing ? "Writing…" : sure ? "Replace your letter? Click again" : letter.trim() ? "Rewrite with Claude" : "Write with Claude"}</button> : null}

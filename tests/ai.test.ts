@@ -11,6 +11,7 @@ import { computeMatch, prefsFrom, whyFromMatch } from "@/lib/match";
 import { rescoreAll } from "@/lib/rescore";
 import { replyStats } from "@/lib/stats";
 import { addDays, todayIn } from "@/lib/dates";
+import { STYLE, stockPhrasesIn, tidyDraft } from "@/lib/ai/style";
 
 type Db = NodePgDatabase<typeof schema>;
 async function freshDb(): Promise<Db> {
@@ -231,6 +232,25 @@ describe("Claude features", () => {
     expect(await answerQuestion(db, "a", "Are you authorized to work in the US?")).toBe("Yes, I can.");
     expect(prompts[0].prompt).toContain("workAuth: US citizen");
     expect(prompts[0].prompt).not.toContain("salary:");
+  });
+});
+
+describe("natural-sounding drafts", () => {
+  it("cleans up typography people don't type into forms", () => {
+    expect(tidyDraft("I\u2019ve run Epicor for years \u2014 and SQL too\u2026 Pay: 90\u2013110k. \u201CQuoted\u201D")).toBe(`I've run Epicor for years, and SQL too... Pay: 90-110k. "Quoted"`);
+  });
+  it("spots stock phrases", () => {
+    expect(stockPhrasesIn("I'm excited to leverage my proven track record.")).toEqual(["excited", "leverage", "proven track record"]);
+    expect(stockPhrasesIn("I rebuilt the Epicor BAQs that finance runs every Monday.")).toEqual([]);
+  });
+  it("sends the style rules with letters and answers, and tidies what comes back", async () => {
+    const db = await freshDb();
+    await addJob(db, "a", "ERP Developer", "Epicor");
+    const { c, prompts } = fakeClaude(() => "Hi team \u2014 I\u2019m in.");
+    setClaudeForTests(c);
+    expect(await writeCoverLetter(db, "a")).toBe("Hi team, I'm in.");
+    expect(await answerQuestion(db, "a", "Why us?")).toBe("Hi team, I'm in.");
+    expect(prompts.every((p) => p.prompt.includes(STYLE))).toBe(true);
   });
 });
 

@@ -4,6 +4,7 @@ import * as schema from "@/db/schema";
 import { addDays, todayIn } from "../dates";
 import { CANDIDATE_NAME, TARGETS, factsText } from "../profile";
 import { resumeMenu, resumeNamed } from "../resumes";
+import { STYLE, tidyDraft } from "./style";
 import { MAX_TOKENS, SCORE_MODEL, WRITE_MODEL, askClaude, callsToday, dailyLimit, extractJsonArray } from "./claude";
 
 type Db = NodePgDatabase<typeof schema>;
@@ -73,11 +74,6 @@ export async function scoreNewJobs(db: Db, ids: string[], max = 30): Promise<num
   return scoreWithClaude(db, ids.slice(0, max));
 }
 
-const STYLE =
-  "Write like a real person: plain words, contractions, a mix of short and longer sentences, one specific detail per paragraph. " +
-  'Avoid: "I am excited/thrilled/eager", "passionate", "leverage", "dynamic", "fast-paced", "I am confident that", "delve", "testament", "align(s) with", "esteemed", ' +
-  '"proven track record", "synergy", em dashes, "not only... but also", bullet points, restating the job ad, and generic closings like "I look forward to the opportunity".';
-
 async function jobForWriting(db: Db, id: string) {
   const [j] = await db
     .select({ title: postings.title, company: postings.company, location: postings.location, mode: postings.mode, description: postings.description, why: matches.why })
@@ -100,7 +96,7 @@ export async function writeCoverLetter(db: Db, id: string, auto = false): Promis
     "Mention he's based in San Francisco when location matters; for roles outside the Bay Area say he's open to remote work or occasional travel. Don't mention his current employer. " +
     STYLE +
     "\n\nReply with only the letter text.";
-  const text = await askClaude(db, { purpose: auto ? "auto_letter" : "cover_letter", model: WRITE_MODEL(), prompt, maxTokens: MAX_TOKENS.writing, postingId: id });
+  const text = tidyDraft(await askClaude(db, { purpose: auto ? "auto_letter" : "cover_letter", model: WRITE_MODEL(), prompt, maxTokens: MAX_TOKENS.writing, postingId: id }));
   await db.update(applications).set({ coverLetter: text, coverLetterBy: auto ? "claude-auto" : "claude", updatedAt: new Date() }).where(eq(applications.postingId, id));
   return text;
 }
@@ -154,9 +150,10 @@ export async function answerQuestion(db: Db, id: string, question: string): Prom
     (j.description ? `Posting:\n${j.description.slice(0, 4000)}\n\n` : "") +
     `His real background (use only these facts; never invent anything):\n${factsText()}\n\n` +
     (saved ? `His own standard answers:\n${saved}\n\n` : "") +
-    "Write in first person, plain and specific, usually 2-5 sentences unless the question asks for a number or yes/no. If the question needs a fact not given here (a number, a date, a preference), put a short [bracketed placeholder] instead of guessing. " +
-    'No em dashes, no "passionate" or "leverage". Reply with only the answer.';
-  return askClaude(db, { purpose: "answer", model: WRITE_MODEL(), prompt, maxTokens: MAX_TOKENS.writing, postingId: id });
+    "Usually 2-5 sentences unless the question asks for a number or yes/no, and answer the question in the first sentence. If the question needs a fact not given here (a number, a date, a preference), put a short [bracketed placeholder] instead of guessing. " +
+    STYLE +
+    "\n\nReply with only the answer.";
+  return tidyDraft(await askClaude(db, { purpose: "answer", model: WRITE_MODEL(), prompt, maxTokens: MAX_TOKENS.writing, postingId: id }));
 }
 
 /** Jobs added by a check that are still rule-scored, newest first. */
