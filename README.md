@@ -155,6 +155,26 @@ The Google refresh token is stored encrypted with a key derived from `SESSION_SE
 
 Once Google sign-in works you can remove `APP_PASSWORD`; only `GOOGLE_ALLOWED_EMAIL` can sign in. Leaving it set keeps the password as a backup.
 
+## Use it from your phone (Tailscale)
+
+Tailscale puts your PC and phone on a private network only your devices can join, so the phone can open the dev server without putting it on the public internet. Don't turn on Tailscale Funnel; that would make it public.
+
+1. Install Tailscale on the PC ([tailscale.com/download](https://tailscale.com/download)) and on the phone (App Store or Play Store). Sign in to the same account on both.
+2. On the PC, find its Tailscale address: click the Tailscale icon in the system tray, or run `tailscale ip -4` in PowerShell. It looks like `100.x.y.z`.
+3. Let the phone through Windows Firewall, only from Tailscale addresses. In PowerShell **as administrator**:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "Scoutline (Tailscale only)" -Direction Inbound -Protocol TCP -LocalPort 3000 -RemoteAddress 100.64.0.0/10 -Action Allow
+   ```
+
+   If Windows also pops up a firewall prompt for Node.js the first time, tick **Private networks** only and click Allow.
+4. Start the server with `npm run dev:phone` instead of `npm run dev`. It's the same dev server, listening on all network connections instead of only this PC. `http://localhost:3000` keeps working on the PC.
+5. With Tailscale on, open `http://100.x.y.z:3000` on the phone (your address from step 2) and sign in with your password. With MagicDNS on, `http://<pc-name>.<tailnet>.ts.net:3000` works too.
+
+The PC has to be on, awake and running `npm run dev:phone`. Tailscale addresses and `.ts.net` names are allowed in `next.config.ts`; if you use another name, such as the short MagicDNS name, add it to `DEV_ORIGINS` in `.env.local`.
+
+Google sign-in and "Connect Gmail" only work on the PC, because Google sends you back to `localhost`. Use your password on the phone. Gmail syncing keeps running on the PC and the results show on the phone.
+
 ## Put it online (Neon + Vercel)
 
 1. **Database.** Create a free project at [neon.tech](https://neon.tech). Copy the **pooled** connection string.
